@@ -10,6 +10,9 @@ import Planning from "./pages/Planning";
 import Employes from "./pages/Employes";
 import Historique from "./pages/Historique";
 import Parametres from "./pages/Parametres";
+import Couverture from "./pages/Couverture";
+import Seuils from "./pages/Seuils";
+import VueSemaines from "./pages/VueSemaines";
 import NotFound from "./pages/NotFound";
 
 function Router() {
@@ -21,6 +24,9 @@ function Router() {
         <Route path="/employes" component={Employes} />
         <Route path="/historique" component={Historique} />
         <Route path="/parametres" component={Parametres} />
+        <Route path="/couverture" component={Couverture} />
+        <Route path="/seuils" component={Seuils} />
+        <Route path="/vue-semaines" component={VueSemaines} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

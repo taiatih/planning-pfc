@@ -1,11 +1,19 @@
+// PFC Planning Manager — Page Planning
+// Tableau 15×7 interactif + bouton "Semaine type" par employé
+// Design: "Terrain Pro" — Brutalisme fonctionnel, IBM Plex
+// ============================================================
+
+import { useState, useCallback } from "react";
 import { usePlanning } from "@/contexts/PlanningContext";
 import {
   JOURS_LONG, JOURS_COURT, formatDateCourt, addDays,
   calculerHeuresEmploye, validerContrat, COULEURS_POSTE,
-  getBrique, Poste,
+  getBrique, Poste, Employe, BriqueHoraire,
+  getSemaineTypeEmploye, setSemaineTypeEmploye,
 } from "@/lib/data";
 import PlanningCell from "@/components/PlanningCell";
-import { Info } from "lucide-react";
+import { Info, Copy, BookmarkCheck, BookmarkPlus } from "lucide-react";
+import { toast } from "sonner";
 
 const POSTES_LEGENDE: { poste: Poste; label: string }[] = [
   { poste: "F&L", label: "Fruits & Légumes" },
@@ -15,8 +23,46 @@ const POSTES_LEGENDE: { poste: Poste; label: string }[] = [
 ];
 
 export default function Planning() {
-  const { employes, planningActuel, semaineCourante, stats } = usePlanning();
+  const { employes, planningActuel, semaineCourante, stats, setCellule } = usePlanning();
   const actifs = employes.filter((e) => e.actif);
+  const [loadingEmp, setLoadingEmp] = useState<string | null>(null);
+
+  // Appliquer la semaine type d'un employé
+  const appliquerSemaineType = useCallback((emp: Employe) => {
+    const st = getSemaineTypeEmploye(emp.id);
+    if (!st || st.jours.length === 0) {
+      toast.warning(`Aucune semaine type définie pour ${emp.nom}`, {
+        description: "Remplissez d'abord une semaine, puis cliquez sur 💾 pour la sauvegarder comme modèle.",
+      });
+      return;
+    }
+    setLoadingEmp(emp.id);
+    st.jours.forEach(({ jour, brique, poste }) => {
+      setCellule(emp.id, jour, brique, poste);
+    });
+    setTimeout(() => {
+      setLoadingEmp(null);
+      toast.success(`Semaine type appliquée — ${emp.nom}`, {
+        description: `${st.jours.filter((j) => j.brique !== "REPOS").length} créneaux chargés`,
+      });
+    }, 200);
+  }, [setCellule]);
+
+  // Sauvegarder la semaine actuelle comme semaine type
+  const sauvegarderSemaineType = useCallback((emp: Employe) => {
+    if (!planningActuel) return;
+    const jours = planningActuel.cellules
+      .filter((c) => c.employeId === emp.id)
+      .map((c) => ({ jour: c.jour, brique: c.brique, poste: c.poste }));
+    if (jours.length === 0) {
+      toast.warning(`Aucun créneau à sauvegarder pour ${emp.nom}`);
+      return;
+    }
+    setSemaineTypeEmploye({ employeId: emp.id, jours });
+    toast.success(`Semaine type sauvegardée — ${emp.nom}`, {
+      description: `${jours.filter((j) => j.brique !== "REPOS").length} créneaux mémorisés`,
+    });
+  }, [planningActuel]);
 
   return (
     <div className="flex flex-col h-full">
@@ -56,16 +102,26 @@ export default function Planning() {
           <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: "#FFE5CC", border: "1px solid #E07B39" }} />
           <span className="text-xs" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#7D3C00" }}>ABSENCE</span>
         </div>
-        <div className="ml-auto flex items-center gap-1 text-xs text-muted-foreground flex-shrink-0">
-          <Info size={12} />
-          <span className="hidden md:inline">Cliquez sur une cellule pour modifier</span>
+        <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground flex-shrink-0">
+          <div className="flex items-center gap-1">
+            <BookmarkPlus size={12} style={{ color: "var(--navy)" }} />
+            <span className="hidden md:inline">Sauvegarder semaine type</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Copy size={12} style={{ color: "var(--navy)" }} />
+            <span className="hidden md:inline">Appliquer semaine type</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Info size={12} />
+            <span className="hidden md:inline">Cliquez sur une cellule pour modifier</span>
+          </div>
         </div>
       </div>
 
       {/* ── Tableau principal ── */}
       <div className="flex-1 overflow-auto p-4">
         <div className="overflow-x-auto">
-          <table className="planning-table" style={{ minWidth: 900 }}>
+          <table className="planning-table" style={{ minWidth: 960 }}>
             <thead>
               <tr>
                 <th className="text-left" style={{ minWidth: 140, width: 140 }}>Employé</th>
@@ -80,6 +136,7 @@ export default function Planning() {
                 ))}
                 <th style={{ minWidth: 60 }}>Total</th>
                 <th style={{ minWidth: 70 }}>Statut</th>
+                <th style={{ minWidth: 64, width: 64 }} title="Semaine type">Type</th>
               </tr>
             </thead>
             <tbody>
@@ -89,6 +146,8 @@ export default function Planning() {
                   : 0;
                 const validation = validerContrat(emp, heures);
                 const c = COULEURS_POSTE[emp.postePrincipal];
+                const semaineType = getSemaineTypeEmploye(emp.id);
+                const hasSemaineType = semaineType && semaineType.jours.some((j) => j.brique !== "REPOS");
 
                 return (
                   <tr key={emp.id} style={{ background: idx % 2 === 0 ? "white" : "oklch(0.985 0.001 250)" }}>
@@ -187,6 +246,36 @@ export default function Planning() {
                         </span>
                       )}
                     </td>
+
+                    {/* Semaine type — boutons */}
+                    <td className="text-center px-1">
+                      <div className="flex items-center justify-center gap-1">
+                        {/* Sauvegarder comme modèle */}
+                        <button
+                          onClick={() => sauvegarderSemaineType(emp)}
+                          className="p-1 rounded hover:bg-muted transition-colors"
+                          title="Sauvegarder comme semaine type"
+                          disabled={heures === 0}
+                        >
+                          <BookmarkPlus
+                            size={13}
+                            style={{ color: heures === 0 ? "var(--muted-foreground)" : "var(--navy)" }}
+                          />
+                        </button>
+                        {/* Appliquer le modèle */}
+                        <button
+                          onClick={() => appliquerSemaineType(emp)}
+                          className="p-1 rounded hover:bg-muted transition-colors"
+                          title={hasSemaineType ? "Appliquer la semaine type" : "Aucune semaine type sauvegardée"}
+                          disabled={loadingEmp === emp.id}
+                        >
+                          <Copy
+                            size={13}
+                            style={{ color: hasSemaineType ? "#28A745" : "var(--muted-foreground)" }}
+                          />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -223,6 +312,7 @@ export default function Planning() {
                     {stats.totalHeuresPlanifiees}h
                   </div>
                 </td>
+                <td />
                 <td />
               </tr>
             </tfoot>

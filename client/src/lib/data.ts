@@ -650,3 +650,192 @@ export function calculerStats(planning: PlanningHebdo | null, employes: Employe[
     alertes,
   };
 }
+
+// ============================================================
+// COUVERTURE HORAIRE — Calcul par tranche de 30 min
+// ============================================================
+
+export interface TrancheHoraire {
+  heure: string;       // "07:00", "07:30", ...
+  heureNum: number;    // 7.0, 7.5, ...
+  presences: {
+    employeId: string;
+    nom: string;
+    poste: Poste;
+  }[];
+  parPoste: Record<Poste, number>;
+  total: number;
+}
+
+/** Convertit "HH:MM" en nombre décimal (ex: "13:30" → 13.5) */
+export function heureToNum(heure: string): number {
+  if (!heure) return 0;
+  const [h, m] = heure.split(":").map(Number);
+  return h + m / 60;
+}
+
+/** Vérifie si un employé est présent à une tranche donnée selon sa brique */
+function estPresentA(brique: BriqueHoraire, tranche: number): boolean {
+  if (brique.type !== "TRAVAIL") return false;
+  const debut1 = heureToNum(brique.heureDebut);
+  const fin1 = heureToNum(brique.heureFin);
+  // Plage 1
+  if (tranche >= debut1 && tranche < fin1) return true;
+  // Plage 2 (si coupure)
+  if (brique.heureDebut2 && brique.heureFin2) {
+    const debut2 = heureToNum(brique.heureDebut2);
+    const fin2 = heureToNum(brique.heureFin2);
+    if (tranche >= debut2 && tranche < fin2) return true;
+  }
+  return false;
+}
+
+/** Calcule la couverture horaire pour un jour donné (jourIdx 0=Lun) */
+export function calculerCouvertureHoraire(
+  jourIdx: number,
+  cellules: CellulePlanning[],
+  employes: Employe[]
+): TrancheHoraire[] {
+  // Tranches de 30 min de 07:00 à 20:00
+  const tranches: TrancheHoraire[] = [];
+  for (let h = 7; h < 20; h += 0.5) {
+    const heureH = Math.floor(h);
+    const heureM = h % 1 === 0 ? "00" : "30";
+    const heure = `${String(heureH).padStart(2, "0")}:${heureM}`;
+    const presences: TrancheHoraire["presences"] = [];
+    const parPoste: Record<Poste, number> = { "F&L": 0, SEC: 0, FRAIS: 0, CAISSE: 0 };
+
+    cellules
+      .filter((c) => c.jour === jourIdx)
+      .forEach((c) => {
+        const b = getBrique(c.brique);
+        if (!b || !c.poste) return;
+        if (estPresentA(b, h)) {
+          const emp = employes.find((e) => e.id === c.employeId);
+          if (emp) {
+            presences.push({ employeId: emp.id, nom: emp.nom, poste: c.poste });
+            parPoste[c.poste]++;
+          }
+        }
+      });
+
+    tranches.push({ heure, heureNum: h, presences, parPoste, total: presences.length });
+  }
+  return tranches;
+}
+
+// ============================================================
+// SEUILS MINIMUM PAR SECTEUR
+// ============================================================
+
+export interface SeuilSecteur {
+  poste: Poste;
+  heureDebut: string;
+  heureFin: string;
+  minimum: number;
+  label?: string;
+}
+
+export const SEUILS_DEFAUT: SeuilSecteur[] = [
+  // F&L
+  { poste: "F&L",    heureDebut: "07:00", heureFin: "11:00", minimum: 1, label: "F&L Ouverture" },
+  { poste: "F&L",    heureDebut: "11:00", heureFin: "14:00", minimum: 1, label: "F&L Midi" },
+  { poste: "F&L",    heureDebut: "14:00", heureFin: "20:00", minimum: 1, label: "F&L Après-midi" },
+  // SEC
+  { poste: "SEC",    heureDebut: "07:00", heureFin: "09:00", minimum: 1, label: "SEC Ouverture" },
+  { poste: "SEC",    heureDebut: "09:00", heureFin: "13:00", minimum: 2, label: "SEC Matin" },
+  { poste: "SEC",    heureDebut: "13:00", heureFin: "14:00", minimum: 1, label: "SEC Midi (coupure)" },
+  { poste: "SEC",    heureDebut: "14:00", heureFin: "20:00", minimum: 2, label: "SEC Après-midi" },
+  // FRAIS
+  { poste: "FRAIS",  heureDebut: "07:00", heureFin: "09:00", minimum: 1, label: "FRAIS Ouverture" },
+  { poste: "FRAIS",  heureDebut: "09:00", heureFin: "13:00", minimum: 2, label: "FRAIS Matin" },
+  { poste: "FRAIS",  heureDebut: "13:00", heureFin: "14:00", minimum: 1, label: "FRAIS Midi" },
+  { poste: "FRAIS",  heureDebut: "14:00", heureFin: "20:00", minimum: 2, label: "FRAIS Après-midi" },
+  // CAISSE
+  { poste: "CAISSE", heureDebut: "08:30", heureFin: "09:00", minimum: 1, label: "CAISSE Ouverture" },
+  { poste: "CAISSE", heureDebut: "09:00", heureFin: "13:00", minimum: 2, label: "CAISSE Matin" },
+  { poste: "CAISSE", heureDebut: "13:00", heureFin: "14:00", minimum: 1, label: "CAISSE Midi" },
+  { poste: "CAISSE", heureDebut: "14:00", heureFin: "20:00", minimum: 2, label: "CAISSE Après-midi" },
+];
+
+const STORAGE_KEY_SEUILS = "pfc_seuils";
+
+export function chargerSeuils(): SeuilSecteur[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SEUILS);
+    return raw ? JSON.parse(raw) : SEUILS_DEFAUT;
+  } catch {
+    return SEUILS_DEFAUT;
+  }
+}
+
+export function sauvegarderSeuils(seuils: SeuilSecteur[]): void {
+  localStorage.setItem(STORAGE_KEY_SEUILS, JSON.stringify(seuils));
+}
+
+/** Vérifie si une tranche est en sous-effectif selon les seuils */
+export function verifierSousEffectif(
+  tranche: TrancheHoraire,
+  seuils: SeuilSecteur[]
+): { poste: Poste; actuel: number; minimum: number; label: string }[] {
+  const alertes: { poste: Poste; actuel: number; minimum: number; label: string }[] = [];
+  const postes: Poste[] = ["F&L", "SEC", "FRAIS", "CAISSE"];
+
+  postes.forEach((poste) => {
+    const seuilsPoste = seuils.filter((s) => s.poste === poste);
+    seuilsPoste.forEach((seuil) => {
+      const debut = heureToNum(seuil.heureDebut);
+      const fin = heureToNum(seuil.heureFin);
+      if (tranche.heureNum >= debut && tranche.heureNum < fin) {
+        const actuel = tranche.parPoste[poste];
+        if (actuel < seuil.minimum) {
+          alertes.push({
+            poste,
+            actuel,
+            minimum: seuil.minimum,
+            label: seuil.label || `${poste} ${seuil.heureDebut}-${seuil.heureFin}`,
+          });
+        }
+      }
+    });
+  });
+
+  return alertes;
+}
+
+// ============================================================
+// SEMAINE TYPE — Remplissage rapide
+// ============================================================
+
+export interface SemaineType {
+  employeId: string;
+  jours: { jour: number; brique: string; poste?: Poste }[];
+}
+
+const STORAGE_KEY_SEMAINE_TYPE = "pfc_semaine_type";
+
+export function chargerSemainesType(): SemaineType[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SEMAINE_TYPE);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function sauvegarderSemainesType(semainesType: SemaineType[]): void {
+  localStorage.setItem(STORAGE_KEY_SEMAINE_TYPE, JSON.stringify(semainesType));
+}
+
+export function getSemaineTypeEmploye(employeId: string): SemaineType | null {
+  const all = chargerSemainesType();
+  return all.find((s) => s.employeId === employeId) || null;
+}
+
+export function setSemaineTypeEmploye(semaineType: SemaineType): void {
+  const all = chargerSemainesType();
+  const idx = all.findIndex((s) => s.employeId === semaineType.employeId);
+  if (idx >= 0) all[idx] = semaineType;
+  else all.push(semaineType);
+  sauvegarderSemainesType(all);
+}

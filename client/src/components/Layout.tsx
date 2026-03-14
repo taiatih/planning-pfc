@@ -11,6 +11,9 @@ import {
   Send,
   FilePen,
   AlertTriangle,
+  BarChart3,
+  SlidersHorizontal,
+  CalendarRange,
 } from "lucide-react";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { getNumeroSemaine, formatDate, addDays, JOURS_COURT, formatDateCourt } from "@/lib/data";
@@ -19,8 +22,11 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { path: "/", icon: LayoutDashboard, label: "Dashboard" },
   { path: "/planning", icon: CalendarDays, label: "Planning" },
+  { path: "/couverture", icon: BarChart3, label: "Couverture" },
+  { path: "/vue-semaines", icon: CalendarRange, label: "3 Semaines" },
   { path: "/employes", icon: Users, label: "Employés" },
   { path: "/historique", icon: History, label: "Historique" },
+  { path: "/seuils", icon: SlidersHorizontal, label: "Seuils" },
   { path: "/parametres", icon: Settings, label: "Paramètres" },
 ];
 
@@ -72,11 +78,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-1">
           {NAV_ITEMS.map(({ path, icon: Icon, label }) => (
-            <Link key={path} href={path}>
-              <a className={cn("nav-item", location === path && "active")}>
-                <Icon size={16} />
-                <span>{label}</span>
-              </a>
+            <Link key={path} href={path} className={cn("nav-item", location === path && "active")}>
+              <Icon size={16} />
+              <span>{label}</span>
             </Link>
           ))}
         </nav>
