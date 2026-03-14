@@ -3,10 +3,18 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================
+   PFC Planning Manager — Design "Terrain Pro"
+   Brutalisme fonctionnel, IBM Plex, couleurs sémantiques
+   Fond blanc cassé, bleu marine, accents fonctionnels
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
   --radius-xl: calc(var(--radius) + 4px);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -27,11 +35,6 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -43,74 +46,65 @@
 }
 
 :root {
-  --primary: var(--color-blue-700);
-  --primary-foreground: var(--color-blue-50);
-  --sidebar-primary: var(--color-blue-600);
-  --sidebar-primary-foreground: var(--color-blue-50);
-  --chart-1: var(--color-blue-300);
-  --chart-2: var(--color-blue-500);
-  --chart-3: var(--color-blue-600);
-  --chart-4: var(--color-blue-700);
-  --chart-5: var(--color-blue-800);
-  --radius: 0.65rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.235 0.015 65);
+  --radius: 0.25rem;
+
+  /* Palette Terrain Pro */
+  --navy: #1B2B4B;
+  --navy-light: #2C3E6B;
+  --navy-dark: #0F1A2E;
+
+  /* Postes */
+  --fl-bg: #D4EDDA;
+  --fl-text: #155724;
+  --fl-border: #28A745;
+  --sec-bg: #D1ECE8;
+  --sec-text: #0D5246;
+  --sec-border: #1ABC9C;
+  --frais-bg: #D0E8F5;
+  --frais-text: #0A3D62;
+  --frais-border: #2980B9;
+  --caisse-bg: #FFF3CD;
+  --caisse-text: #856404;
+  --caisse-border: #FFC107;
+
+  /* Absences */
+  --repos-bg: #F0F0F0;
+  --repos-text: #6C757D;
+  --cp-bg: #CCE5FF;
+  --cp-text: #004085;
+  --maladie-bg: #FFE5CC;
+  --maladie-text: #7D3C00;
+  --form-bg: #E8D5F5;
+  --form-text: #4A235A;
+
+  /* Tokens shadcn */
+  --background: oklch(0.985 0.002 85);
+  --foreground: oklch(0.18 0.025 250);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.235 0.015 65);
+  --card-foreground: oklch(0.18 0.025 250);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.235 0.015 65);
-  --secondary: oklch(0.98 0.001 286.375);
-  --secondary-foreground: oklch(0.4 0.015 65);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.141 0.005 285.823);
+  --popover-foreground: oklch(0.18 0.025 250);
+  --primary: oklch(0.28 0.08 250);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.95 0.003 250);
+  --secondary-foreground: oklch(0.28 0.08 250);
+  --muted: oklch(0.96 0.002 250);
+  --muted-foreground: oklch(0.52 0.02 250);
+  --accent: oklch(0.94 0.005 250);
+  --accent-foreground: oklch(0.18 0.025 250);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.623 0.214 259.815);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.235 0.015 65);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.623 0.214 259.815);
-}
-
-.dark {
-  --primary: var(--color-blue-700);
-  --primary-foreground: var(--color-blue-50);
-  --sidebar-primary: var(--color-blue-500);
-  --sidebar-primary-foreground: var(--color-blue-50);
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.85 0.005 65);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.85 0.005 65);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.85 0.005 65);
-  --secondary: oklch(0.24 0.006 286.033);
-  --secondary-foreground: oklch(0.7 0.005 65);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground:  oklch(0.92 0.005 65);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.488 0.243 264.376);
-  --chart-1: var(--color-blue-300);
-  --chart-2: var(--color-blue-500);
-  --chart-3: var(--color-blue-600);
-  --chart-4: var(--color-blue-700);
-  --chart-5: var(--color-blue-800);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.85 0.005 65);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground:  oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.488 0.243 264.376);
+  --border: oklch(0.88 0.005 250);
+  --input: oklch(0.88 0.005 250);
+  --ring: oklch(0.28 0.08 250);
+  --sidebar: oklch(0.18 0.05 250);
+  --sidebar-foreground: oklch(0.92 0.01 250);
+  --sidebar-primary: oklch(0.65 0.12 220);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent: oklch(0.25 0.06 250);
+  --sidebar-accent-foreground: oklch(0.92 0.01 250);
+  --sidebar-border: oklch(0.28 0.06 250);
+  --sidebar-ring: oklch(0.65 0.12 220);
 }
 
 @layer base {
@@ -119,59 +113,211 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  h1, h2, h3 {
+    font-family: 'IBM Plex Sans Condensed', sans-serif;
+    font-weight: 700;
+  }
+  code, .mono {
+    font-family: 'IBM Plex Mono', monospace;
   }
   button:not(:disabled),
-  [role="button"]:not([aria-disabled="true"]),
-  [type="button"]:not(:disabled),
-  [type="submit"]:not(:disabled),
-  [type="reset"]:not(:disabled),
-  a[href],
-  select:not(:disabled),
-  input[type="checkbox"]:not(:disabled),
-  input[type="radio"]:not(:disabled) {
+  [role="button"]:not([aria-disabled="true"]) {
     @apply cursor-pointer;
   }
 }
 
 @layer components {
-  /**
-   * Custom container utility that centers content and adds responsive padding.
-   *
-   * This overrides Tailwind's default container behavior to:
-   * - Auto-center content (mx-auto)
-   * - Add responsive horizontal padding
-   * - Set max-width for large screens
-   *
-   * Usage: <div className="container">...</div>
-   *
-   * For custom widths, use max-w-* utilities directly:
-   * <div className="max-w-6xl mx-auto px-4">...</div>
-   */
   .container {
     width: 100%;
     margin-left: auto;
     margin-right: auto;
-    padding-left: 1rem; /* 16px - mobile padding */
+    padding-left: 1rem;
     padding-right: 1rem;
   }
-
   .flex {
     min-height: 0;
     min-width: 0;
   }
 
-  @media (min-width: 640px) {
-    .container {
-      padding-left: 1.5rem; /* 24px - tablet padding */
-      padding-right: 1.5rem;
-    }
+  /* ── Cellules de planning ── */
+  .cell-fl {
+    background-color: var(--fl-bg);
+    color: var(--fl-text);
+    border-color: var(--fl-border);
+  }
+  .cell-sec {
+    background-color: var(--sec-bg);
+    color: var(--sec-text);
+    border-color: var(--sec-border);
+  }
+  .cell-frais {
+    background-color: var(--frais-bg);
+    color: var(--frais-text);
+    border-color: var(--frais-border);
+  }
+  .cell-caisse {
+    background-color: var(--caisse-bg);
+    color: var(--caisse-text);
+    border-color: var(--caisse-border);
+  }
+  .cell-repos {
+    background-color: var(--repos-bg);
+    color: var(--repos-text);
+  }
+  .cell-cp {
+    background-color: var(--cp-bg);
+    color: var(--cp-text);
+  }
+  .cell-maladie {
+    background-color: var(--maladie-bg);
+    color: var(--maladie-text);
+  }
+  .cell-form {
+    background-color: var(--form-bg);
+    color: var(--form-text);
   }
 
-  @media (min-width: 1024px) {
-    .container {
-      padding-left: 2rem; /* 32px - desktop padding */
-      padding-right: 2rem;
-      max-width: 1280px; /* Standard content width */
-    }
+  /* ── Badge statut planning ── */
+  .badge-brouillon {
+    background: #FFF3CD;
+    color: #856404;
+    border: 1px solid #FFC107;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .badge-publie {
+    background: #D4EDDA;
+    color: #155724;
+    border: 1px solid #28A745;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .badge-avenant {
+    background: #CCE5FF;
+    color: #004085;
+    border: 1px solid #3B82F6;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Sidebar nav items ── */
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    color: oklch(0.75 0.02 250);
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.1s ease;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .nav-item:hover {
+    background: oklch(0.25 0.06 250);
+    color: oklch(0.95 0.01 250);
+  }
+  .nav-item.active {
+    background: oklch(0.65 0.12 220);
+    color: oklch(0.98 0 0);
+  }
+
+  /* ── Tableau planning ── */
+  .planning-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 12px;
+  }
+  .planning-table th {
+    background: var(--navy);
+    color: white;
+    padding: 8px 6px;
+    text-align: center;
+    font-family: 'IBM Plex Sans Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border: 1px solid oklch(0.35 0.06 250);
+    white-space: nowrap;
+  }
+  .planning-table td {
+    border: 1px solid oklch(0.88 0.005 250);
+    padding: 0;
+    vertical-align: middle;
+  }
+  .planning-cell {
+    min-height: 52px;
+    padding: 4px 6px;
+    cursor: pointer;
+    transition: filter 0.1s ease;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  .planning-cell:hover {
+    filter: brightness(0.93);
+  }
+  .planning-cell.selected {
+    outline: 2px solid var(--navy);
+    outline-offset: -2px;
+  }
+  .planning-cell-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1.2;
+  }
+  .planning-cell-hours {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    opacity: 0.7;
+  }
+
+  /* ── KPI Cards ── */
+  .kpi-card {
+    background: white;
+    border: 1px solid oklch(0.88 0.005 250);
+    border-radius: 4px;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .kpi-value {
+    font-family: 'IBM Plex Sans Condensed', sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--navy);
+    line-height: 1;
+  }
+  .kpi-label {
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: oklch(0.52 0.02 250);
   }
 }
