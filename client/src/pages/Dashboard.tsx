@@ -3,8 +3,9 @@ import {
   JOURS_COURT, COULEURS_POSTE, Poste,
   calculerHeuresEmploye, validerContrat, compterJoursTravailles, compterJoursRepos,
   getBrique, formatDate, addDays, getNumeroSemaine,
+  verifierRotationEquipe, StatutRotation,
 } from "@/lib/data";
-import { AlertTriangle, CheckCircle, Users, Clock, TrendingUp, CalendarCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle, Users, Clock, TrendingUp, CalendarCheck, Calendar } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 const POSTES: Poste[] = ["F&L", "SEC", "FRAIS", "CAISSE"];
@@ -16,6 +17,12 @@ export default function Dashboard() {
   const annee = semaineCourante.getFullYear();
 
   const actifs = employes.filter((e) => e.actif);
+
+  // Rotation weekends
+  const rotationWeekends = verifierRotationEquipe(employes, plannings);
+  const alertesRotation = actifs.filter(
+    (e) => rotationWeekends[e.id] && rotationWeekends[e.id].statut !== "ok"
+  );
 
   // Données pour le graphique de couverture
   const couvertureData = stats.couvertureParJour.map((d, i) => ({
@@ -141,16 +148,39 @@ export default function Dashboard() {
           >
             Alertes & Anomalies
           </h2>
-          {stats.alertes.length === 0 ? (
+          {stats.alertes.length === 0 && alertesRotation.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-32 gap-2">
               <CheckCircle size={32} style={{ color: "#28A745" }} />
               <span className="text-sm text-muted-foreground">Aucune alerte</span>
             </div>
           ) : (
-            <div className="space-y-2 max-h-[220px] overflow-y-auto">
+            <div className="space-y-2 max-h-[280px] overflow-y-auto">
+              {/* Alertes rotation weekends */}
+              {alertesRotation.map((emp) => {
+                const r = rotationWeekends[emp.id];
+                const msg = r.statut === "manque_les_deux"
+                  ? "Aucun weekend ce mois — Sam + Dim requis"
+                  : r.statut === "manque_samedi"
+                  ? `Samedi manquant ce mois (${r.dimanches} Dim OK)`
+                  : `Dimanche manquant ce mois (${r.samedis} Sam OK)`;
+                return (
+                  <div
+                    key={emp.id}
+                    className="px-3 py-2 rounded text-xs flex items-start gap-2"
+                    style={{ background: "#E8F4FD", color: "#1A5276", border: "1px solid #85C1E9", fontFamily: "'IBM Plex Mono', monospace" }}
+                  >
+                    <Calendar size={12} style={{ flexShrink: 0, marginTop: 1 }} />
+                    <div>
+                      <div className="font-semibold">{emp.nom}</div>
+                      <div className="opacity-80">{msg}</div>
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Alertes contrats */}
               {stats.alertes.map((a, i) => (
                 <div
-                  key={i}
+                  key={`alerte-${i}`}
                   className="px-3 py-2 rounded text-xs"
                   style={{
                     background: a.type === "REPOS" ? "#FFE5CC" : "#FFF3CD",

@@ -23,6 +23,7 @@ interface PlanningContextType {
 
   // Édition planning
   setCellule: (employeId: string, jour: number, brique: string, poste?: Poste) => void;
+  setCellulesMultiples: (cellules: CellulePlanning[]) => void;
   sauvegarder: () => void;
   publier: () => void;
   creerAvenant: () => void;
@@ -82,11 +83,26 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
           ? { ...c, brique, poste }
           : c
       );
-      // Si la cellule n'existe pas encore, l'ajouter
       const exists = prev.cellules.some((c) => c.employeId === employeId && c.jour === jour);
       return {
         ...prev,
         cellules: exists ? cellules : [...prev.cellules, { employeId, jour, brique, poste }],
+        modifieLe: new Date().toISOString(),
+      };
+    });
+  }, []);
+
+  // Remplace en masse plusieurs cellules (pour la suggestion automatique)
+  const setCellulesMultiples = useCallback((nouvelles: CellulePlanning[]) => {
+    setPlanningActuel((prev) => {
+      if (!prev) return prev;
+      // Partir des cellules existantes, écraser celles qui sont dans 'nouvelles'
+      const autresCellules = prev.cellules.filter(
+        (c) => !nouvelles.some((n) => n.employeId === c.employeId && n.jour === c.jour)
+      );
+      return {
+        ...prev,
+        cellules: [...autresCellules, ...nouvelles],
         modifieLe: new Date().toISOString(),
       };
     });
@@ -154,6 +170,7 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         semaineSuivante,
         semainePrecedente,
         setCellule,
+        setCellulesMultiples,
         sauvegarder,
         publier,
         creerAvenant,

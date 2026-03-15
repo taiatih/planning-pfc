@@ -1,20 +1,187 @@
-import { useState } from "react";
+// PFC Planning Manager — Page Paramètres
+// Éditeur CRUD complet des créneaux + export + reset
+// ============================================================
+
+import { useState, useCallback } from "react";
 import { usePlanning } from "@/contexts/PlanningContext";
-import { BRIQUES, COULEURS_POSTE, COULEURS_ABSENCE, Poste } from "@/lib/data";
-import { Settings, Database, Palette, Clock, AlertTriangle } from "lucide-react";
+import {
+  chargerBriques, sauvegarderBriques, reinitialiserBriques,
+  BRIQUES_DEFAUT, COULEURS_POSTE, COULEURS_ABSENCE,
+  Poste, BriqueHoraire,
+} from "@/lib/data";
+import {
+  Settings, Database, Palette, Clock, AlertTriangle,
+  Plus, Trash2, Save, RotateCcw, Edit3, X, Check,
+} from "lucide-react";
 import { toast } from "sonner";
 
 const POSTES: Poste[] = ["F&L", "SEC", "FRAIS", "CAISSE"];
+const HEURES_OPTIONS: string[] = [];
+for (let h = 7; h <= 20; h++) {
+  HEURES_OPTIONS.push(`${String(h).padStart(2, "0")}:00`);
+  if (h < 20) HEURES_OPTIONS.push(`${String(h).padStart(2, "0")}:30`);
+}
+
+function genererCode(label: string): string {
+  return label
+    .toUpperCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 20);
+}
+
+function calculerDuree(h1: string, h2: string, h3?: string, h4?: string): number {
+  const toNum = (s: string) => { const [a, b] = s.split(":").map(Number); return a + b / 60; };
+  let d = toNum(h2) - toNum(h1);
+  if (h3 && h4) d += toNum(h4) - toNum(h3);
+  return Math.round(d * 10) / 10;
+}
+
+interface BriqueEditState {
+  code: string;
+  label: string;
+  heureDebut: string;
+  heureFin: string;
+  heureDebut2: string;
+  heureFin2: string;
+  type: "TRAVAIL" | "ABSENCE";
+  postes: Poste[];
+  hasCoupure: boolean;
+}
+
+function briqueToEdit(b: BriqueHoraire): BriqueEditState {
+  return {
+    code: b.code,
+    label: b.label,
+    heureDebut: b.heureDebut || "09:00",
+    heureFin: b.heureFin || "17:00",
+    heureDebut2: b.heureDebut2 || "14:00",
+    heureFin2: b.heureFin2 || "18:00",
+    type: b.type,
+    postes: b.postes || [],
+    hasCoupure: !!(b.heureDebut2 && b.heureFin2),
+  };
+}
+
+function editToBrique(e: BriqueEditState): BriqueHoraire {
+  const duree = e.type === "ABSENCE" ? 0 : calculerDuree(
+    e.heureDebut, e.heureFin,
+    e.hasCoupure ? e.heureDebut2 : undefined,
+    e.hasCoupure ? e.heureFin2 : undefined
+  );
+  return {
+    code: e.code,
+    label: e.label,
+    heureDebut: e.type === "ABSENCE" ? "" : e.heureDebut,
+    heureFin: e.type === "ABSENCE" ? "" : e.heureFin,
+    heureDebut2: e.type === "ABSENCE" || !e.hasCoupure ? undefined : e.heureDebut2,
+    heureFin2: e.type === "ABSENCE" || !e.hasCoupure ? undefined : e.heureFin2,
+    duree,
+    type: e.type,
+    postes: e.type === "ABSENCE" ? undefined : e.postes,
+  };
+}
 
 export default function Parametres() {
   const { employes } = usePlanning();
   const [activeTab, setActiveTab] = useState<"briques" | "postes" | "export" | "reset">("briques");
+  const [briques, setBriques] = useState<BriqueHoraire[]>(() => chargerBriques());
+  const [editingCode, setEditingCode] = useState<string | null>(null);
+  const [editState, setEditState] = useState<BriqueEditState | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [filterType, setFilterType] = useState<"all" | "TRAVAIL" | "ABSENCE">("all");
 
-  const briquesTravail = BRIQUES.filter((b) => b.type === "TRAVAIL");
-  const briquesAbsence = BRIQUES.filter((b) => b.type === "ABSENCE");
+  const briquesFiltrees = briques.filter((b) =>
+    filterType === "all" ? true : b.type === filterType
+  );
+
+  const refreshBriques = useCallback(() => {
+    setBriques(chargerBriques());
+  }, []);
+
+  const handleSaveBriques = useCallback(() => {
+    sauvegarderBriques(briques);
+    toast.success("Créneaux sauvegardés");
+  }, [briques]);
+
+  const handleResetBriques = useCallback(() => {
+    if (confirm("Réinitialiser tous les créneaux aux valeurs par défaut ?")) {
+      reinitialiserBriques();
+      setBriques(BRIQUES_DEFAUT);
+      toast.success("Créneaux réinitialisés");
+    }
+  }, []);
+
+  const startEdit = useCallback((b: BriqueHoraire) => {
+    setEditingCode(b.code);
+    setEditState(briqueToEdit(b));
+    setIsCreating(false);
+  }, []);
+
+  const startCreate = useCallback(() => {
+    setEditingCode("__new__");
+    setEditState({
+      code: "",
+      label: "",
+      heureDebut: "09:00",
+      heureFin: "17:00",
+      heureDebut2: "14:00",
+      heureFin2: "18:00",
+      type: "TRAVAIL",
+      postes: [],
+      hasCoupure: false,
+    });
+    setIsCreating(true);
+  }, []);
+
+  const cancelEdit = useCallback(() => {
+    setEditingCode(null);
+    setEditState(null);
+    setIsCreating(false);
+  }, []);
+
+  const saveEdit = useCallback(() => {
+    if (!editState) return;
+    if (!editState.label.trim()) {
+      toast.error("Le libellé est obligatoire");
+      return;
+    }
+
+    const code = isCreating ? genererCode(editState.label) : editState.code;
+    const brique = editToBrique({ ...editState, code });
+
+    if (isCreating) {
+      if (briques.some((b) => b.code === code)) {
+        toast.error(`Le code "${code}" existe déjà`);
+        return;
+      }
+      const updated = [...briques, brique];
+      setBriques(updated);
+      sauvegarderBriques(updated);
+      toast.success(`Créneau "${brique.label}" créé`);
+    } else {
+      const updated = briques.map((b) => b.code === editingCode ? brique : b);
+      setBriques(updated);
+      sauvegarderBriques(updated);
+      toast.success(`Créneau "${brique.label}" modifié`);
+    }
+    cancelEdit();
+  }, [editState, editingCode, isCreating, briques, cancelEdit]);
+
+  const deleteBrique = useCallback((code: string) => {
+    const b = briques.find((br) => br.code === code);
+    if (!b) return;
+    if (!confirm(`Supprimer le créneau "${b.label}" ?`)) return;
+    const updated = briques.filter((br) => br.code !== code);
+    setBriques(updated);
+    sauvegarderBriques(updated);
+    toast.success(`Créneau "${b.label}" supprimé`);
+  }, [briques]);
 
   const handleReset = () => {
-    if (confirm("⚠️ Supprimer TOUTES les données (plannings, employés) ? Cette action est irréversible.")) {
+    if (confirm("Supprimer TOUTES les données (plannings, employés, créneaux) ? Cette action est irréversible.")) {
       localStorage.clear();
       toast.success("Données réinitialisées — rechargement...");
       setTimeout(() => window.location.reload(), 1000);
@@ -25,6 +192,9 @@ export default function Parametres() {
     const data = {
       employes: JSON.parse(localStorage.getItem("pfc_employes") || "[]"),
       plannings: JSON.parse(localStorage.getItem("pfc_plannings") || "[]"),
+      briques: JSON.parse(localStorage.getItem("pfc_briques") || "[]"),
+      seuils: JSON.parse(localStorage.getItem("pfc_seuils") || "[]"),
+      semainesType: JSON.parse(localStorage.getItem("pfc_semaine_type") || "[]"),
       exportedAt: new Date().toISOString(),
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -54,7 +224,7 @@ export default function Parametres() {
           Paramètres
         </h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Configuration de l'application PFC Planning Manager
+          Configuration des créneaux, postes et données
         </p>
       </div>
 
@@ -76,98 +246,327 @@ export default function Parametres() {
         ))}
       </div>
 
-      {/* Contenu */}
+      {/* ═══ TAB CRÉNEAUX ═══ */}
       {activeTab === "briques" && (
-        <div className="space-y-6">
-          {/* Créneaux de travail */}
-          <div>
-            <h2
-              className="text-sm font-bold uppercase tracking-wider mb-3"
-              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", color: "var(--navy)" }}
-            >
-              Créneaux de travail ({briquesTravail.length})
-            </h2>
-            <div className="bg-white border rounded overflow-hidden" style={{ borderColor: "var(--border)" }}>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr style={{ background: "oklch(0.95 0.003 250)" }}>
-                    {["Code", "Label", "Horaires", "Durée", "Postes compatibles"].map((h) => (
-                      <th
-                        key={h}
-                        className="px-3 py-2 text-left font-semibold uppercase tracking-wide"
-                        style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", color: "var(--navy)" }}
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {briquesTravail.map((b, idx) => (
-                    <tr key={b.code} style={{ background: idx % 2 === 0 ? "white" : "oklch(0.985 0.001 250)" }}>
-                      <td className="px-3 py-2 font-semibold" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--navy)" }}>
-                        {b.code}
-                      </td>
-                      <td className="px-3 py-2">{b.label}</td>
-                      <td className="px-3 py-2" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
-                        {b.heureDebut && b.heureFin
-                          ? b.heureDebut2
-                            ? `${b.heureDebut}-${b.heureFin} / ${b.heureDebut2}-${b.heureFin2}`
-                            : `${b.heureDebut}-${b.heureFin}`
-                          : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-center font-semibold" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
-                        {b.duree}h
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex gap-1 flex-wrap">
-                          {(b.postes || []).map((p) => {
-                            const c = COULEURS_POSTE[p];
-                            return (
-                              <span
-                                key={p}
-                                className="px-1.5 py-0.5 rounded"
-                                style={{ backgroundColor: c.bg, color: c.text, fontSize: 10, fontFamily: "'IBM Plex Mono', monospace" }}
-                              >
-                                {p}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <div className="space-y-4">
+          {/* Toolbar */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex gap-1">
+              {(["all", "TRAVAIL", "ABSENCE"] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilterType(f)}
+                  className="px-3 py-1.5 text-xs font-semibold rounded transition-colors"
+                  style={{
+                    background: filterType === f ? "var(--navy)" : "transparent",
+                    color: filterType === f ? "white" : "var(--muted-foreground)",
+                    border: `1px solid ${filterType === f ? "var(--navy)" : "var(--border)"}`,
+                  }}
+                >
+                  {f === "all" ? `Tous (${briques.length})` : f === "TRAVAIL" ? `Travail (${briques.filter((b) => b.type === "TRAVAIL").length})` : `Absence (${briques.filter((b) => b.type === "ABSENCE").length})`}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleResetBriques}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded border hover:bg-muted transition-colors"
+                style={{ borderColor: "var(--border)", color: "var(--muted-foreground)" }}
+              >
+                <RotateCcw size={12} />
+                Réinitialiser
+              </button>
+              <button
+                onClick={startCreate}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded text-white transition-colors"
+                style={{ background: "var(--navy)" }}
+              >
+                <Plus size={12} />
+                Nouveau créneau
+              </button>
             </div>
           </div>
 
-          {/* Codes absence */}
-          <div>
-            <h2
-              className="text-sm font-bold uppercase tracking-wider mb-3"
-              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", color: "var(--navy)" }}
+          {/* Formulaire création/édition */}
+          {editState && (
+            <div
+              className="bg-white border rounded-lg p-4 space-y-3"
+              style={{ borderColor: "var(--navy)", borderWidth: 2 }}
             >
-              Codes d'absence ({briquesAbsence.length})
-            </h2>
-            <div className="flex flex-wrap gap-2">
-              {briquesAbsence.map((b) => {
-                const c = COULEURS_ABSENCE[b.code] || COULEURS_ABSENCE["REPOS"];
-                return (
-                  <div
-                    key={b.code}
-                    className="px-3 py-2 rounded border text-xs font-semibold"
-                    style={{ backgroundColor: c.bg, color: c.text, borderColor: c.border || "#ADB5BD", fontFamily: "'IBM Plex Mono', monospace" }}
+              <div className="flex items-center justify-between">
+                <h3
+                  className="text-sm font-bold uppercase tracking-wider"
+                  style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", color: "var(--navy)" }}
+                >
+                  {isCreating ? "Nouveau créneau" : `Modifier — ${editState.code}`}
+                </h3>
+                <button onClick={cancelEdit} className="p-1 hover:bg-muted rounded">
+                  <X size={16} style={{ color: "var(--muted-foreground)" }} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* Libellé */}
+                <div>
+                  <label className="text-xs font-semibold block mb-1" style={{ color: "var(--navy)" }}>Libellé *</label>
+                  <input
+                    type="text"
+                    value={editState.label}
+                    onChange={(e) => setEditState({ ...editState, label: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border rounded"
+                    style={{ borderColor: "var(--border)" }}
+                    placeholder="ex: Matin 9h-16h"
+                  />
+                </div>
+
+                {/* Type */}
+                <div>
+                  <label className="text-xs font-semibold block mb-1" style={{ color: "var(--navy)" }}>Type</label>
+                  <select
+                    value={editState.type}
+                    onChange={(e) => setEditState({ ...editState, type: e.target.value as "TRAVAIL" | "ABSENCE" })}
+                    className="w-full px-3 py-2 text-sm border rounded"
+                    style={{ borderColor: "var(--border)" }}
                   >
-                    {b.code} — {b.label}
+                    <option value="TRAVAIL">Travail</option>
+                    <option value="ABSENCE">Absence</option>
+                  </select>
+                </div>
+
+                {/* Postes (si travail) */}
+                {editState.type === "TRAVAIL" && (
+                  <div className="md:col-span-2">
+                    <label className="text-xs font-semibold block mb-1" style={{ color: "var(--navy)" }}>Postes compatibles</label>
+                    <div className="flex gap-2 flex-wrap">
+                      {POSTES.map((p) => {
+                        const selected = editState.postes.includes(p);
+                        const c = COULEURS_POSTE[p];
+                        return (
+                          <button
+                            key={p}
+                            onClick={() => {
+                              const postes = selected
+                                ? editState.postes.filter((x) => x !== p)
+                                : [...editState.postes, p];
+                              setEditState({ ...editState, postes });
+                            }}
+                            className="px-3 py-1.5 rounded text-xs font-semibold transition-all"
+                            style={{
+                              backgroundColor: selected ? c.bg : "transparent",
+                              color: selected ? c.text : "var(--muted-foreground)",
+                              border: `2px solid ${selected ? c.border : "var(--border)"}`,
+                            }}
+                          >
+                            {p}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                );
-              })}
+                )}
+              </div>
+
+              {/* Horaires (si travail) */}
+              {editState.type === "TRAVAIL" && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div>
+                      <label className="text-xs font-semibold block mb-1" style={{ color: "var(--navy)" }}>Début</label>
+                      <select
+                        value={editState.heureDebut}
+                        onChange={(e) => setEditState({ ...editState, heureDebut: e.target.value })}
+                        className="px-2 py-1.5 text-sm border rounded"
+                        style={{ borderColor: "var(--border)", fontFamily: "'IBM Plex Mono', monospace" }}
+                      >
+                        {HEURES_OPTIONS.map((h) => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold block mb-1" style={{ color: "var(--navy)" }}>Fin</label>
+                      <select
+                        value={editState.heureFin}
+                        onChange={(e) => setEditState({ ...editState, heureFin: e.target.value })}
+                        className="px-2 py-1.5 text-sm border rounded"
+                        style={{ borderColor: "var(--border)", fontFamily: "'IBM Plex Mono', monospace" }}
+                      >
+                        {HEURES_OPTIONS.map((h) => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                    </div>
+
+                    <div className="flex items-end">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editState.hasCoupure}
+                          onChange={(e) => setEditState({ ...editState, hasCoupure: e.target.checked })}
+                          className="rounded"
+                        />
+                        <span className="text-xs font-semibold" style={{ color: "var(--navy)" }}>Coupure (2 plages)</span>
+                      </label>
+                    </div>
+
+                    {editState.hasCoupure && (
+                      <>
+                        <div>
+                          <label className="text-xs font-semibold block mb-1" style={{ color: "var(--navy)" }}>Reprise</label>
+                          <select
+                            value={editState.heureDebut2}
+                            onChange={(e) => setEditState({ ...editState, heureDebut2: e.target.value })}
+                            className="px-2 py-1.5 text-sm border rounded"
+                            style={{ borderColor: "var(--border)", fontFamily: "'IBM Plex Mono', monospace" }}
+                          >
+                            {HEURES_OPTIONS.map((h) => <option key={h} value={h}>{h}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold block mb-1" style={{ color: "var(--navy)" }}>Fin 2</label>
+                          <select
+                            value={editState.heureFin2}
+                            onChange={(e) => setEditState({ ...editState, heureFin2: e.target.value })}
+                            className="px-2 py-1.5 text-sm border rounded"
+                            style={{ borderColor: "var(--border)", fontFamily: "'IBM Plex Mono', monospace" }}
+                          >
+                            {HEURES_OPTIONS.map((h) => <option key={h} value={h}>{h}</option>)}
+                          </select>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Durée calculée */}
+                    <div className="ml-auto">
+                      <label className="text-xs font-semibold block mb-1" style={{ color: "var(--navy)" }}>Durée</label>
+                      <div
+                        className="px-3 py-1.5 text-sm font-bold rounded"
+                        style={{
+                          background: "oklch(0.95 0.02 250)",
+                          color: "var(--navy)",
+                          fontFamily: "'IBM Plex Mono', monospace",
+                        }}
+                      >
+                        {calculerDuree(
+                          editState.heureDebut, editState.heureFin,
+                          editState.hasCoupure ? editState.heureDebut2 : undefined,
+                          editState.hasCoupure ? editState.heureFin2 : undefined
+                        )}h
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-2 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+                <button
+                  onClick={saveEdit}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded text-white"
+                  style={{ background: "var(--navy)" }}
+                >
+                  <Check size={14} />
+                  {isCreating ? "Créer" : "Enregistrer"}
+                </button>
+                <button
+                  onClick={cancelEdit}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded border hover:bg-muted"
+                  style={{ borderColor: "var(--border)", color: "var(--muted-foreground)" }}
+                >
+                  Annuler
+                </button>
+              </div>
             </div>
+          )}
+
+          {/* Table des créneaux */}
+          <div className="bg-white border rounded overflow-hidden" style={{ borderColor: "var(--border)" }}>
+            <table className="w-full text-xs">
+              <thead>
+                <tr style={{ background: "oklch(0.95 0.003 250)" }}>
+                  {["Code", "Libellé", "Type", "Horaires", "Durée", "Postes", "Actions"].map((h) => (
+                    <th
+                      key={h}
+                      className="px-3 py-2 text-left font-semibold uppercase tracking-wide"
+                      style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", color: "var(--navy)" }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {briquesFiltrees.map((b, idx) => (
+                  <tr
+                    key={b.code}
+                    style={{
+                      background: editingCode === b.code ? "oklch(0.96 0.02 250)" : idx % 2 === 0 ? "white" : "oklch(0.985 0.001 250)",
+                    }}
+                  >
+                    <td className="px-3 py-2 font-semibold" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--navy)", fontSize: 10 }}>
+                      {b.code}
+                    </td>
+                    <td className="px-3 py-2 font-medium">{b.label}</td>
+                    <td className="px-3 py-2">
+                      <span
+                        className="px-1.5 py-0.5 rounded text-xs font-semibold"
+                        style={{
+                          background: b.type === "TRAVAIL" ? "#D4EDDA" : "#F0F0F0",
+                          color: b.type === "TRAVAIL" ? "#155724" : "#6C757D",
+                        }}
+                      >
+                        {b.type}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+                      {b.heureDebut && b.heureFin
+                        ? b.heureDebut2
+                          ? `${b.heureDebut}-${b.heureFin} / ${b.heureDebut2}-${b.heureFin2}`
+                          : `${b.heureDebut}-${b.heureFin}`
+                        : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-center font-semibold" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+                      {b.duree > 0 ? `${b.duree}h` : "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex gap-1 flex-wrap">
+                        {(b.postes || []).map((p) => {
+                          const c = COULEURS_POSTE[p];
+                          return (
+                            <span
+                              key={p}
+                              className="px-1.5 py-0.5 rounded"
+                              style={{ backgroundColor: c.bg, color: c.text, fontSize: 10, fontFamily: "'IBM Plex Mono', monospace" }}
+                            >
+                              {p}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => startEdit(b)}
+                          className="p-1 rounded hover:bg-muted transition-colors"
+                          title="Modifier"
+                        >
+                          <Edit3 size={13} style={{ color: "var(--navy)" }} />
+                        </button>
+                        <button
+                          onClick={() => deleteBrique(b.code)}
+                          className="p-1 rounded hover:bg-red-50 transition-colors"
+                          title="Supprimer"
+                        >
+                          <Trash2 size={13} style={{ color: "#DC3545" }} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
+      {/* ═══ TAB POSTES ═══ */}
       {activeTab === "postes" && (
         <div className="space-y-4">
           <h2
@@ -186,10 +585,7 @@ export default function Parametres() {
                   className="bg-white border rounded p-4"
                   style={{ borderColor: c.border, borderLeftWidth: 4 }}
                 >
-                  <div
-                    className="text-lg font-bold mb-1"
-                    style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", color: c.text }}
-                  >
+                  <div className="text-lg font-bold mb-1" style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", color: c.text }}>
                     {poste}
                   </div>
                   <div className="text-xs text-muted-foreground mb-3">
@@ -198,18 +594,13 @@ export default function Parametres() {
                     {poste === "FRAIS" && "Rayon Frais"}
                     {poste === "CAISSE" && "Caisse"}
                   </div>
-                  <div
-                    className="text-2xl font-bold"
-                    style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", color: c.text }}
-                  >
+                  <div className="text-2xl font-bold" style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", color: c.text }}>
                     {empsPoste.length}
                   </div>
                   <div className="text-xs text-muted-foreground">employé{empsPoste.length > 1 ? "s" : ""} principal</div>
                   <div className="mt-2 space-y-0.5">
                     {empsPoste.map((e) => (
-                      <div key={e.id} className="text-xs" style={{ color: c.text }}>
-                        • {e.nom}
-                      </div>
+                      <div key={e.id} className="text-xs" style={{ color: c.text }}>• {e.nom}</div>
                     ))}
                   </div>
                 </div>
@@ -219,6 +610,7 @@ export default function Parametres() {
         </div>
       )}
 
+      {/* ═══ TAB EXPORT ═══ */}
       {activeTab === "export" && (
         <div className="space-y-4">
           <h2
@@ -229,9 +621,9 @@ export default function Parametres() {
           </h2>
           <div className="bg-white border rounded p-5 space-y-4" style={{ borderColor: "var(--border)" }}>
             <div>
-              <h3 className="font-semibold mb-1" style={{ color: "var(--navy)" }}>Export JSON</h3>
+              <h3 className="font-semibold mb-1" style={{ color: "var(--navy)" }}>Export JSON complet</h3>
               <p className="text-sm text-muted-foreground mb-3">
-                Exporte tous les plannings et employés au format JSON pour sauvegarde ou migration.
+                Exporte tous les plannings, employés, créneaux, seuils et semaines type au format JSON.
               </p>
               <button
                 onClick={handleExportJSON}
@@ -242,24 +634,11 @@ export default function Parametres() {
                 Télécharger export JSON
               </button>
             </div>
-            <div className="border-t pt-4" style={{ borderColor: "var(--border)" }}>
-              <h3 className="font-semibold mb-1" style={{ color: "var(--navy)" }}>Export PDF</h3>
-              <p className="text-sm text-muted-foreground mb-3">
-                Génère un PDF du planning hebdomadaire pour distribution aux employés.
-              </p>
-              <button
-                onClick={() => toast.info("Export PDF — fonctionnalité à venir dans la prochaine version")}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded border hover:bg-muted transition-colors"
-                style={{ borderColor: "var(--border)", color: "var(--muted-foreground)" }}
-              >
-                <Settings size={14} />
-                Export PDF (à venir)
-              </button>
-            </div>
           </div>
         </div>
       )}
 
+      {/* ═══ TAB RESET ═══ */}
       {activeTab === "reset" && (
         <div className="space-y-4">
           <h2
@@ -268,16 +647,13 @@ export default function Parametres() {
           >
             Zone dangereuse
           </h2>
-          <div
-            className="bg-white border rounded p-5"
-            style={{ borderColor: "#DC3545", borderLeftWidth: 4 }}
-          >
+          <div className="bg-white border rounded p-5" style={{ borderColor: "#DC3545", borderLeftWidth: 4 }}>
             <div className="flex items-start gap-3">
               <AlertTriangle size={20} style={{ color: "#DC3545", flexShrink: 0, marginTop: 2 }} />
               <div>
                 <h3 className="font-semibold mb-1" style={{ color: "#DC3545" }}>Réinitialiser toutes les données</h3>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Cette action supprime définitivement tous les plannings et remet les employés aux valeurs par défaut.
+                  Supprime définitivement tous les plannings, employés, créneaux et seuils.
                   Cette action est <strong>irréversible</strong>.
                 </p>
                 <button
