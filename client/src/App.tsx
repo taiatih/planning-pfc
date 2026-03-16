@@ -13,6 +13,7 @@ import Parametres from "./pages/Parametres";
 import Couverture from "./pages/Couverture";
 import Seuils from "./pages/Seuils";
 import VueSemaines from "./pages/VueSemaines";
+import RotationMensuelle from "./pages/RotationMensuelle";
 import NotFound from "./pages/NotFound";
 
 function Router() {
@@ -27,6 +28,7 @@ function Router() {
         <Route path="/couverture" component={Couverture} />
         <Route path="/seuils" component={Seuils} />
         <Route path="/vue-semaines" component={VueSemaines} />
+        <Route path="/rotation-mensuelle" component={RotationMensuelle} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

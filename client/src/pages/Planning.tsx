@@ -14,9 +14,10 @@ import {
   chargerSeuils, suggererPlanning,
   verifierRotationEquipe, StatutRotation,
   genererHTMLPlanningPDF,
+  getJoursCritiquesSeveres,
 } from "@/lib/data";
 import PlanningCell from "@/components/PlanningCell";
-import { Info, Copy, BookmarkPlus, Wand2, FileText, Calendar } from "lucide-react";
+import { Info, Copy, BookmarkPlus, Wand2, FileText, Calendar, AlertOctagon, X } from "lucide-react";
 import { toast } from "sonner";
 
 const POSTES_LEGENDE: { poste: Poste; label: string }[] = [
@@ -52,6 +53,14 @@ export default function Planning() {
     () => verifierRotationEquipe(employes, plannings),
     [employes, plannings]
   );
+
+  // Jours critiques sévères (sous-effectif sur > 3 tranches)
+  const joursCritiques = useMemo(() => {
+    const seuils = chargerSeuils();
+    return getJoursCritiquesSeveres(planningActuel?.cellules || [], employes, seuils, 3);
+  }, [planningActuel, employes]);
+
+  const [banniereVisible, setBanniereVisible] = useState(true);
 
   // Appliquer la semaine type d'un employé
   const appliquerSemaineType = useCallback((emp: Employe) => {
@@ -127,6 +136,38 @@ export default function Planning() {
 
   return (
     <div className="flex flex-col h-full">
+      {/* ── Bannière alerte critique ── */}
+      {banniereVisible && joursCritiques.length > 0 && (
+        <div
+          className="flex items-center justify-between px-4 py-2.5 flex-shrink-0"
+          style={{
+            background: "#DC3545",
+            color: "white",
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <AlertOctagon size={16} />
+            <span className="text-sm font-bold" style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+              SOUS-EFFECTIF SÉVÈRE
+            </span>
+            <span className="text-sm" style={{ fontFamily: "'IBM Plex Mono', monospace", opacity: 0.9 }}>
+              — {joursCritiques.length} jour{joursCritiques.length > 1 ? "s" : ""} en situation critique : 
+              {joursCritiques.map((j) => JOURS_COURT[j]).join(", ")}
+            </span>
+            <span className="text-xs opacity-75" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+              (plus de 3 tranches horaires sans couverture suffisante)
+            </span>
+          </div>
+          <button
+            onClick={() => setBanniereVisible(false)}
+            className="p-1 rounded hover:bg-white/20 transition-colors"
+            title="Masquer l'alerte"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* ── Barre d'outils ── */}
       <div
         className="flex items-center gap-3 px-4 py-2 border-b bg-white flex-shrink-0 flex-wrap"

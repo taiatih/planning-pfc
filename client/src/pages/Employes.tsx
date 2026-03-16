@@ -350,10 +350,49 @@ export default function Employes() {
                 </div>
               </div>
 
+              {/* Jours indisponibles */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--navy)" }}>
+                  Jours indisponibles
+                </label>
+                <div className="flex gap-1.5 flex-wrap">
+                  {["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"].map((j, i) => {
+                    const indisp = (form.joursIndisponibles || []).includes(i);
+                    return (
+                      <button
+                        key={j}
+                        type="button"
+                        onClick={() => setForm((p) => {
+                          const current = p.joursIndisponibles || [];
+                          return {
+                            ...p,
+                            joursIndisponibles: indisp
+                              ? current.filter((d) => d !== i)
+                              : [...current, i],
+                          };
+                        })}
+                        className="px-2.5 py-1 rounded text-xs font-semibold border transition-all"
+                        style={{
+                          backgroundColor: indisp ? "#FFF3CD" : "white",
+                          color: indisp ? "#856404" : "var(--muted-foreground)",
+                          borderColor: indisp ? "#FFC107" : "var(--border)",
+                          fontFamily: "'IBM Plex Mono', monospace",
+                        }}
+                      >
+                        {j}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs mt-1" style={{ color: "var(--muted-foreground)" }}>
+                  Les jours sélectionnés seront exclus de la suggestion automatique
+                </p>
+              </div>
+
               {/* Contrainte */}
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--navy)" }}>
-                  Contrainte particulière
+                  Contrainte particulière (note libre)
                 </label>
                 <input
                   type="text"

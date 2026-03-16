@@ -14,6 +14,7 @@ import {
   BarChart3,
   SlidersHorizontal,
   CalendarRange,
+  CalendarCheck2,
 } from "lucide-react";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { getNumeroSemaine, formatDate, addDays, JOURS_COURT, formatDateCourt } from "@/lib/data";
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { path: "/planning", icon: CalendarDays, label: "Planning" },
   { path: "/couverture", icon: BarChart3, label: "Couverture" },
   { path: "/vue-semaines", icon: CalendarRange, label: "3 Semaines" },
+  { path: "/rotation-mensuelle", icon: CalendarCheck2, label: "Rotation WE" },
   { path: "/employes", icon: Users, label: "Employés" },
   { path: "/historique", icon: History, label: "Historique" },
   { path: "/seuils", icon: SlidersHorizontal, label: "Seuils" },

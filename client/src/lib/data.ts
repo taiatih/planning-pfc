@@ -27,6 +27,8 @@ export interface Employe {
   actif: boolean;
   tuteur?: string;
   commentaire?: string;
+  // Jours indisponibles : 0=Lun, 1=Mar, 2=Mer, 3=Jeu, 4=Ven, 5=Sam, 6=Dim
+  joursIndisponibles?: number[];
 }
 
 export interface BriqueHoraire {
@@ -856,29 +858,33 @@ export function suggererPlanning(
     const besoinSamedi = samedis.length === 0; // Pas encore de samedi ce mois
     const besoinDimanche = dimanches.length === 0; // Pas encore de dimanche ce mois
 
+    // Jours disponibles pour cet employé (exclure les jours indisponibles)
+    const joursIndisp = emp.joursIndisponibles || [];
+    const joursOuvresDispo = joursOuvres.filter((j) => !joursIndisp.includes(j));
+
     // Construire la liste des jours à travailler
-    // Base : Lun-Ven, puis ajouter Sam/Dim si rotation nécessaire
+    // Base : Lun-Ven disponibles, puis ajouter Sam/Dim si rotation nécessaire
     const joursATravailler: number[] = [];
 
-    // Jours de semaine (Lun-Ven) : max 5 jours
+    // Jours de semaine (Lun-Ven) disponibles : max 5 jours
     const nbJoursBase = Math.min(5, Math.floor(emp.heuresHebdo / meilleureBrique.duree));
 
     // Si besoin de weekend, on remplace un jour de semaine par le weekend
-    if (besoinSamedi && besoinDimanche) {
-      // Travailler Sam + Dim + 3 jours de semaine (total 5 jours)
-      joursATravailler.push(5, 6); // Sam + Dim
-      joursATravailler.push(...joursOuvres.slice(0, Math.max(0, nbJoursBase - 2)));
-    } else if (besoinSamedi) {
-      // Travailler Sam + (nbJours-1) jours de semaine
+    // (seulement si le weekend n'est pas marqué indisponible)
+    const samediDispo = !joursIndisp.includes(5);
+    const dimancheDispo = !joursIndisp.includes(6);
+
+    if (besoinSamedi && besoinDimanche && samediDispo && dimancheDispo) {
+      joursATravailler.push(5, 6);
+      joursATravailler.push(...joursOuvresDispo.slice(0, Math.max(0, nbJoursBase - 2)));
+    } else if (besoinSamedi && samediDispo) {
       joursATravailler.push(5);
-      joursATravailler.push(...joursOuvres.slice(0, Math.max(0, nbJoursBase - 1)));
-    } else if (besoinDimanche) {
-      // Travailler Dim + (nbJours-1) jours de semaine
+      joursATravailler.push(...joursOuvresDispo.slice(0, Math.max(0, nbJoursBase - 1)));
+    } else if (besoinDimanche && dimancheDispo) {
       joursATravailler.push(6);
-      joursATravailler.push(...joursOuvres.slice(0, Math.max(0, nbJoursBase - 1)));
+      joursATravailler.push(...joursOuvresDispo.slice(0, Math.max(0, nbJoursBase - 1)));
     } else {
-      // Pas de besoin weekend cette semaine — jours de semaine uniquement
-      joursATravailler.push(...joursOuvres.slice(0, nbJoursBase));
+      joursATravailler.push(...joursOuvresDispo.slice(0, nbJoursBase));
     }
 
     // Choisir le poste pour chaque jour
@@ -1119,4 +1125,149 @@ export function doitTravaillerWeekend(
     // Besoin d'un dimanche ce mois-ci ?
     return dimanches.length === 0;
   }
+}
+
+// ============================================================
+// ROTATION MENSUELLE — Vue complète 4 semaines
+// ============================================================
+
+export interface SemaineRotation {
+  semaine: number;
+  annee: number;
+  dateDebut: string; // lundi ISO
+  samediTravaille: boolean;
+  dimancheTravaille: boolean;
+  samediAbsence: boolean; // CP/MALADIE ce jour
+  dimancheAbsence: boolean;
+}
+
+export interface RotationMensuelleEmploye {
+  employe: Employe;
+  mois: number;
+  annee: number;
+  semaines: SemaineRotation[];
+  totalSamedis: number;
+  totalDimanches: number;
+  conformeSamedi: boolean; // >= 1
+  conformeDimanche: boolean; // >= 1
+}
+
+/** Retourne les 4 (ou 5) semaines qui couvrent un mois donné */
+export function getSemainesDuMois(annee: number, mois: number): { semaine: number; lundi: Date }[] {
+  // Premier jour du mois
+  const premierJour = new Date(annee, mois - 1, 1);
+  // Dernier jour du mois
+  const dernierJour = new Date(annee, mois, 0);
+
+  // Lundi de la première semaine
+  let lundi = getLundiDeSemaine(premierJour);
+  const semaines: { semaine: number; lundi: Date }[] = [];
+
+  while (lundi <= dernierJour) {
+    semaines.push({ semaine: getNumeroSemaine(lundi), lundi: new Date(lundi) });
+    lundi = addDays(lundi, 7);
+  }
+
+  return semaines;
+}
+
+/** Calcule la rotation mensuelle complète pour un employé */
+export function calculerRotationMensuelle(
+  employe: Employe,
+  annee: number,
+  mois: number,
+  plannings: PlanningHebdo[]
+): RotationMensuelleEmploye {
+  const semaines = getSemainesDuMois(annee, mois);
+
+  const semainesRotation: SemaineRotation[] = semaines.map(({ semaine, lundi }) => {
+    const planning = plannings.find((p) => p.semaine === semaine && p.annee === annee);
+
+    let samediTravaille = false;
+    let dimancheTravaille = false;
+    let samediAbsence = false;
+    let dimancheAbsence = false;
+
+    if (planning) {
+      const cellSam = planning.cellules.find((c) => c.employeId === employe.id && c.jour === 5);
+      const cellDim = planning.cellules.find((c) => c.employeId === employe.id && c.jour === 6);
+
+      if (cellSam) {
+        const b = getBrique(cellSam.brique);
+        if (b?.type === "TRAVAIL" && b.code !== "REPOS") samediTravaille = true;
+        if (b?.type === "ABSENCE" && b.code !== "REPOS") samediAbsence = true;
+      }
+      if (cellDim) {
+        const b = getBrique(cellDim.brique);
+        if (b?.type === "TRAVAIL" && b.code !== "REPOS") dimancheTravaille = true;
+        if (b?.type === "ABSENCE" && b.code !== "REPOS") dimancheAbsence = true;
+      }
+    }
+
+    return {
+      semaine,
+      annee,
+      dateDebut: dateToString(lundi),
+      samediTravaille,
+      dimancheTravaille,
+      samediAbsence,
+      dimancheAbsence,
+    };
+  });
+
+  const totalSamedis = semainesRotation.filter((s) => s.samediTravaille).length;
+  const totalDimanches = semainesRotation.filter((s) => s.dimancheTravaille).length;
+
+  return {
+    employe,
+    mois,
+    annee,
+    semaines: semainesRotation,
+    totalSamedis,
+    totalDimanches,
+    conformeSamedi: totalSamedis >= 1,
+    conformeDimanche: totalDimanches >= 1,
+  };
+}
+
+/** Calcule la rotation mensuelle pour toute l'équipe */
+export function calculerRotationEquipe(
+  employes: Employe[],
+  annee: number,
+  mois: number,
+  plannings: PlanningHebdo[]
+): RotationMensuelleEmploye[] {
+  return employes
+    .filter((e) => e.actif)
+    .map((e) => calculerRotationMensuelle(e, annee, mois, plannings));
+}
+
+// ============================================================
+// ALERTE CRITIQUE — Seuil sous-effectif sévère
+// ============================================================
+
+/** Retourne true si un jour a plus de N tranches en sous-effectif (critique sévère) */
+export function jourEstCritiqueSevere(
+  jourIdx: number,
+  cellules: CellulePlanning[],
+  employes: Employe[],
+  seuils: SeuilSecteur[],
+  seuilTranches = 3
+): boolean {
+  if (seuils.length === 0) return false;
+  const niveau = calculerNiveauCouverture(jourIdx, cellules, employes, seuils);
+  return niveau.niveau === "critique" && niveau.sousEffectifs >= seuilTranches;
+}
+
+/** Retourne les jours critiques sévères de la semaine */
+export function getJoursCritiquesSeveres(
+  cellules: CellulePlanning[],
+  employes: Employe[],
+  seuils: SeuilSecteur[],
+  seuilTranches = 3
+): number[] {
+  if (seuils.length === 0) return [];
+  return Array.from({ length: 7 }, (_, j) => j).filter((j) =>
+    jourEstCritiqueSevere(j, cellules, employes, seuils, seuilTranches)
+  );
 }
