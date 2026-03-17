@@ -1271,3 +1271,122 @@ export function getJoursCritiquesSeveres(
     jourEstCritiqueSevere(j, cellules, employes, seuils, seuilTranches)
   );
 }
+
+// ============================================================
+// COPIE MULTI-SEMAINE
+// ============================================================
+
+export interface OptionsCopie {
+  /** Copier uniquement les créneaux de travail (exclure CP, Maladie, etc.) */
+  exclureAbsences: boolean;
+  /** Copier uniquement les jours 0-4 (Lun-Ven), ignorer Sam/Dim */
+  seulementSemaine: boolean;
+  /** Si la semaine cible a déjà un planning, écraser ses cellules */
+  ecraser: boolean;
+}
+
+export interface ResultatCopie {
+  semaineSource: number;
+  anneeSource: number;
+  semaineCible: number;
+  anneeCible: number;
+  nbCellulesCopiees: number;
+  nbCellulesIgnorees: number;
+  planningCible: PlanningHebdo;
+}
+
+/**
+ * Copie les cellules du planning source vers la semaine cible.
+ * Retourne le planning cible mis à jour (non encore sauvegardé).
+ */
+export function copierPlanningVers(
+  planningSource: PlanningHebdo,
+  lundiCible: Date,
+  employes: Employe[],
+  options: OptionsCopie = { exclureAbsences: true, seulementSemaine: false, ecraser: true }
+): ResultatCopie {
+  const semaineCible = getNumeroSemaine(lundiCible);
+  const anneeCible = lundiCible.getFullYear();
+
+  // Charger ou créer le planning cible
+  const { planning: planningCible } = trouverOuCreerPlanning(
+    semaineCible,
+    anneeCible,
+    lundiCible,
+    employes.filter((e) => e.actif)
+  );
+
+  const CODES_ABSENCE: string[] = ["REPOS", "CP", "MALADIE", "FORM", "RTT", "ABS-J", "ABS-NJ", "FERIE"];
+
+  let nbCopiees = 0;
+  let nbIgnorees = 0;
+
+  // Construire la liste des cellules à copier
+  const cellulesACopier: CellulePlanning[] = [];
+
+  planningSource.cellules.forEach((cellule) => {
+    // Filtrer les jours weekend si option activée
+    if (options.seulementSemaine && cellule.jour >= 5) {
+      nbIgnorees++;
+      return;
+    }
+
+    // Filtrer les absences si option activée
+    if (options.exclureAbsences && CODES_ABSENCE.includes(cellule.brique)) {
+      nbIgnorees++;
+      return;
+    }
+
+    // Vérifier que l'employé existe toujours dans la cible
+    const employe = employes.find((e) => e.id === cellule.employeId && e.actif);
+    if (!employe) {
+      nbIgnorees++;
+      return;
+    }
+
+    cellulesACopier.push({ ...cellule });
+    nbCopiees++;
+  });
+
+  // Fusionner avec les cellules existantes de la cible
+  let cellulesFinales: CellulePlanning[];
+
+  if (options.ecraser) {
+    // Remplacer les cellules existantes par les nouvelles
+    const autresCellules = planningCible.cellules.filter(
+      (c) => !cellulesACopier.some((n) => n.employeId === c.employeId && n.jour === c.jour)
+    );
+    cellulesFinales = [...autresCellules, ...cellulesACopier];
+  } else {
+    // Ne copier que les cellules qui sont encore à REPOS dans la cible
+    const cellulesAEcraser = cellulesACopier.filter((n) => {
+      const existante = planningCible.cellules.find(
+        (c) => c.employeId === n.employeId && c.jour === n.jour
+      );
+      return !existante || existante.brique === "REPOS";
+    });
+    const autresCellules = planningCible.cellules.filter(
+      (c) => !cellulesAEcraser.some((n) => n.employeId === c.employeId && n.jour === c.jour)
+    );
+    cellulesFinales = [...autresCellules, ...cellulesAEcraser];
+    nbIgnorees += cellulesACopier.length - cellulesAEcraser.length;
+    nbCopiees = cellulesAEcraser.length;
+  }
+
+  const planningMisAJour: PlanningHebdo = {
+    ...planningCible,
+    cellules: cellulesFinales,
+    statut: "BROUILLON",
+    modifieLe: new Date().toISOString(),
+  };
+
+  return {
+    semaineSource: planningSource.semaine,
+    anneeSource: planningSource.annee,
+    semaineCible,
+    anneeCible,
+    nbCellulesCopiees: nbCopiees,
+    nbCellulesIgnorees: nbIgnorees,
+    planningCible: planningMisAJour,
+  };
+}

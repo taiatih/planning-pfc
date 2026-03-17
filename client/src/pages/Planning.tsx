@@ -15,9 +15,10 @@ import {
   verifierRotationEquipe, StatutRotation,
   genererHTMLPlanningPDF,
   getJoursCritiquesSeveres,
+  getLundiDeSemaine, getNumeroSemaine, formatDate, OptionsCopie,
 } from "@/lib/data";
 import PlanningCell from "@/components/PlanningCell";
-import { Info, Copy, BookmarkPlus, Wand2, FileText, Calendar, AlertOctagon, X } from "lucide-react";
+import { Info, Copy, BookmarkPlus, Wand2, FileText, Calendar, AlertOctagon, X, CopyPlus, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 const POSTES_LEGENDE: { poste: Poste; label: string }[] = [
@@ -35,10 +36,50 @@ const COULEUR_NIVEAU: Record<NiveauCouverture, { bg: string; text: string; label
 };
 
 export default function Planning() {
-  const { employes, plannings, planningActuel, semaineCourante, stats, setCellule, setCellulesMultiples } = usePlanning();
+  const { employes, plannings, planningActuel, semaineCourante, stats, setCellule, setCellulesMultiples, copierVers, allerSemaine } = usePlanning();
   const actifs = employes.filter((e) => e.actif);
   const [loadingEmp, setLoadingEmp] = useState<string | null>(null);
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
+
+  // Modal copie multi-semaine
+  const [modalCopieOuvert, setModalCopieOuvert] = useState(false);
+  const [optionsCopie, setOptionsCopie] = useState<OptionsCopie>({
+    exclureAbsences: true,
+    seulementSemaine: false,
+    ecraser: true,
+  });
+  // Semaines cibles proposées : S+1, S+2, S+3, S+4
+  const semainesCibles = useMemo(() => {
+    return [1, 2, 3, 4].map((offset) => {
+      const lundi = addDays(semaineCourante, offset * 7);
+      const num = getNumeroSemaine(lundi);
+      const annee = lundi.getFullYear();
+      const dejaExiste = plannings.some((p) => p.semaine === num && p.annee === annee);
+      return { lundi, num, annee, offset, dejaExiste };
+    });
+  }, [semaineCourante, plannings]);
+  const [semaineCibleSelectionnee, setSemaineCibleSelectionnee] = useState<number>(1); // offset
+
+  const executerCopie = useCallback(() => {
+    const cible = semainesCibles.find((s) => s.offset === semaineCibleSelectionnee);
+    if (!cible) return;
+    const resultat = copierVers(cible.lundi, optionsCopie);
+    if (!resultat) {
+      toast.error("Impossible de copier — aucun planning source");
+      return;
+    }
+    setModalCopieOuvert(false);
+    toast.success(
+      `Planning copié vers S${resultat.semaineCible} — ${resultat.anneeCible}`,
+      {
+        description: `${resultat.nbCellulesCopiees} créneaux copiés${resultat.nbCellulesIgnorees > 0 ? `, ${resultat.nbCellulesIgnorees} ignorés` : ""}`,
+        action: {
+          label: "Aller à S" + resultat.semaineCible,
+          onClick: () => allerSemaine(cible.lundi),
+        },
+      }
+    );
+  }, [semainesCibles, semaineCibleSelectionnee, optionsCopie, copierVers, allerSemaine]);
 
   // Calcul des niveaux de couverture par jour (mémoïsé)
   const niveauxCouverture = useMemo(() => {
@@ -210,6 +251,16 @@ export default function Planning() {
           >
             <Wand2 size={12} />
             {loadingSuggestion ? "Génération..." : "Suggérer semaine"}
+          </button>
+          <button
+            onClick={() => setModalCopieOuvert(true)}
+            disabled={!planningActuel}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded border hover:bg-muted transition-colors"
+            style={{ borderColor: "#0D6EFD", color: "#0D6EFD", opacity: !planningActuel ? 0.5 : 1 }}
+            title="Copier ce planning vers une autre semaine"
+          >
+            <CopyPlus size={12} />
+            Copier vers...
           </button>
           <button
             onClick={exportPDF}
@@ -442,6 +493,150 @@ export default function Planning() {
           .planning-table { position: absolute; left: 0; top: 0; width: 100%; font-size: 9px; }
         }
       `}</style>
+
+      {/* ── Modal Copie Multi-Semaine ── */}
+      {modalCopieOuvert && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.5)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setModalCopieOuvert(false); }}
+        >
+          <div
+            className="bg-white rounded-lg shadow-2xl w-full max-w-md mx-4"
+            style={{ border: "2px solid var(--navy)" }}
+          >
+            {/* En-tête */}
+            <div
+              className="flex items-center justify-between px-5 py-4 border-b"
+              style={{ background: "var(--navy)", borderRadius: "6px 6px 0 0" }}
+            >
+              <div className="flex items-center gap-2">
+                <CopyPlus size={16} color="white" />
+                <span
+                  className="font-bold text-white text-sm"
+                  style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", letterSpacing: "0.05em" }}
+                >
+                  COPIER LE PLANNING
+                </span>
+              </div>
+              <button onClick={() => setModalCopieOuvert(false)} className="text-white/70 hover:text-white">
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Corps */}
+            <div className="px-5 py-4 space-y-5">
+              {/* Source */}
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted-foreground)", fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+                  Source
+                </p>
+                <div
+                  className="px-3 py-2 rounded text-sm font-semibold"
+                  style={{ background: "#EEF2FF", color: "var(--navy)", fontFamily: "'IBM Plex Mono', monospace" }}
+                >
+                  S{planningActuel?.semaine} — {planningActuel?.annee}
+                  &nbsp;&middot;&nbsp;
+                  {planningActuel?.cellules.filter((c) => c.brique !== "REPOS" && ![
+                    "CP","MALADIE","FORM","RTT","ABS-J","ABS-NJ","FERIE"
+                  ].includes(c.brique)).length} créneaux travail
+                </div>
+              </div>
+
+              {/* Sélection semaine cible */}
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--muted-foreground)", fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+                  Semaine cible
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {semainesCibles.map((s) => (
+                    <button
+                      key={s.offset}
+                      onClick={() => setSemaineCibleSelectionnee(s.offset)}
+                      className="flex flex-col items-start px-3 py-2.5 rounded border-2 text-left transition-all"
+                      style={{
+                        borderColor: semaineCibleSelectionnee === s.offset ? "#0D6EFD" : "var(--border)",
+                        background: semaineCibleSelectionnee === s.offset ? "#EFF6FF" : "white",
+                      }}
+                    >
+                      <span className="text-xs font-bold" style={{ color: "var(--navy)", fontFamily: "'IBM Plex Mono', monospace" }}>
+                        S{s.num} — {s.annee}
+                      </span>
+                      <span className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
+                        {formatDate(s.lundi)}
+                      </span>
+                      {s.dejaExiste && (
+                        <span className="text-xs mt-1 px-1.5 py-0.5 rounded" style={{ background: "#FFF3CD", color: "#856404", fontSize: 10 }}>
+                          Planning existant
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Options */}
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--muted-foreground)", fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+                  Options
+                </p>
+                <div className="space-y-2">
+                  {[
+                    {
+                      key: "exclureAbsences" as keyof OptionsCopie,
+                      label: "Exclure les absences (CP, Maladie, RTT…)",
+                      desc: "Seuls les créneaux de travail sont copiés",
+                    },
+                    {
+                      key: "seulementSemaine" as keyof OptionsCopie,
+                      label: "Jours ouvrables uniquement (Lun–Ven)",
+                      desc: "Ignorer Samedi et Dimanche",
+                    },
+                    {
+                      key: "ecraser" as keyof OptionsCopie,
+                      label: "Écraser les créneaux existants",
+                      desc: "Si désactivé, ne copie que les cellules encore vides (REPOS)",
+                    },
+                  ].map(({ key, label, desc }) => (
+                    <label key={key} className="flex items-start gap-3 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={optionsCopie[key] as boolean}
+                        onChange={(e) => setOptionsCopie((prev) => ({ ...prev, [key]: e.target.checked }))}
+                        className="mt-0.5 w-4 h-4 accent-blue-600 cursor-pointer"
+                      />
+                      <div>
+                        <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{label}</p>
+                        <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>{desc}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Pied */}
+            <div className="flex items-center justify-end gap-3 px-5 py-4 border-t" style={{ borderColor: "var(--border)" }}>
+              <button
+                onClick={() => setModalCopieOuvert(false)}
+                className="px-4 py-2 text-sm rounded border hover:bg-muted transition-colors"
+                style={{ borderColor: "var(--border)", color: "var(--muted-foreground)" }}
+              >
+                Annuler
+              </button>
+              <button
+                onClick={executerCopie}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-bold rounded text-white transition-opacity hover:opacity-90"
+                style={{ background: "#0D6EFD" }}
+              >
+                <CopyPlus size={14} />
+                Copier vers S{semainesCibles.find((s) => s.offset === semaineCibleSelectionnee)?.num}
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

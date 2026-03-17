@@ -6,6 +6,7 @@ import {
   trouverOuCreerPlanning, sauvegarderPlannings,
   getLundiDeSemaine, getNumeroSemaine, dateToString, addDays,
   calculerStats, StatsDashboard,
+  copierPlanningVers, OptionsCopie, ResultatCopie,
 } from "@/lib/data";
 
 interface PlanningContextType {
@@ -27,6 +28,9 @@ interface PlanningContextType {
   sauvegarder: () => void;
   publier: () => void;
   creerAvenant: () => void;
+
+  // Copie multi-semaine
+  copierVers: (lundiCible: Date, options?: OptionsCopie) => ResultatCopie | null;
 
   // Gestion employés
   ajouterEmploye: (emp: Employe) => void;
@@ -134,6 +138,20 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     setPlannings(chargerPlannings());
   }, [planningActuel]);
 
+  const copierVers = useCallback((lundiCible: Date, options?: OptionsCopie): ResultatCopie | null => {
+    if (!planningActuel) return null;
+    const resultat = copierPlanningVers(
+      planningActuel,
+      lundiCible,
+      employes,
+      options ?? { exclureAbsences: true, seulementSemaine: false, ecraser: true }
+    );
+    // Sauvegarder immédiatement le planning cible
+    sauvegarderPlanning(resultat.planningCible);
+    setPlannings(chargerPlannings());
+    return resultat;
+  }, [planningActuel, employes]);
+
   const ajouterEmploye = useCallback((emp: Employe) => {
     setEmployes((prev) => {
       const updated = [...prev, emp];
@@ -171,6 +189,7 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         semainePrecedente,
         setCellule,
         setCellulesMultiples,
+        copierVers,
         sauvegarder,
         publier,
         creerAvenant,
