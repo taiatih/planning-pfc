@@ -1390,3 +1390,146 @@ export function copierPlanningVers(
     planningCible: planningMisAJour,
   };
 }
+
+// ============================================================
+// JOURS FÉRIÉS & FÊTES RELIGIEUSES
+// ============================================================
+
+export type TypeJourSpecial =
+  | "FERIE_LEGAL"    // Jour férié légal (affiché + bloqué si 1er mai)
+  | "FERIE_BLOQUE"   // 1er mai : magasin fermé, saisie impossible
+  | "AID_FITR"       // Aïd el-Fitr (indication uniquement)
+  | "AID_ADHA";      // Aïd el-Adha (indication uniquement)
+
+export interface JourSpecial {
+  id: string;
+  date: string;          // "YYYY-MM-DD"
+  type: TypeJourSpecial;
+  label: string;
+  annee: number;
+  recurrent?: boolean;   // true pour les fériés légaux fixes (recalculés chaque année)
+}
+
+// Calcul des jours fériés légaux français pour une année donnée
+export function calculerFeriesLegaux(annee: number): JourSpecial[] {
+  // Calcul de Pâques (algorithme de Meeus/Jones/Butcher)
+  const a = annee % 19;
+  const b = Math.floor(annee / 100);
+  const c = annee % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const moisPaques = Math.floor((h + l - 7 * m + 114) / 31);
+  const jourPaques = ((h + l - 7 * m + 114) % 31) + 1;
+  const paques = new Date(annee, moisPaques - 1, jourPaques);
+
+  const ferie = (mois: number, jour: number, label: string, bloque = false): JourSpecial => ({
+    id: `ferie-${annee}-${mois}-${jour}`,
+    date: `${annee}-${String(mois).padStart(2, "0")}-${String(jour).padStart(2, "0")}`,
+    type: bloque ? "FERIE_BLOQUE" : "FERIE_LEGAL",
+    label,
+    annee,
+    recurrent: true,
+  });
+
+  const ferieRelative = (offset: number, label: string): JourSpecial => {
+    const d = new Date(paques);
+    d.setDate(d.getDate() + offset);
+    return {
+      id: `ferie-${annee}-paques-${offset}`,
+      date: dateToString(d),
+      type: "FERIE_LEGAL",
+      label,
+      annee,
+      recurrent: true,
+    };
+  };
+
+  return [
+    ferie(1, 1, "Jour de l'An"),
+    ferieRelative(1, "Lundi de Pâques"),
+    ferie(5, 1, "Fête du Travail — Magasin fermé", true), // 1er mai BLOQUÉ
+    ferie(5, 8, "Victoire 1945"),
+    ferieRelative(39, "Ascension"),
+    ferieRelative(50, "Lundi de Pentecôte"),
+    ferie(7, 14, "Fête Nationale"),
+    ferie(8, 15, "Assomption"),
+    ferie(11, 1, "Toussaint"),
+    ferie(11, 11, "Armistice"),
+    ferie(12, 25, "Noël"),
+  ];
+}
+
+// Storage des jours spéciaux (fêtes musulmanes + overrides)
+const STORAGE_KEY_JOURS_SPECIAUX = "pfc_jours_speciaux";
+
+export function chargerJoursSpeciaux(): JourSpecial[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_JOURS_SPECIAUX);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function sauvegarderJoursSpeciaux(jours: JourSpecial[]): void {
+  localStorage.setItem(STORAGE_KEY_JOURS_SPECIAUX, JSON.stringify(jours));
+}
+
+export function ajouterJourSpecial(jour: JourSpecial): void {
+  const jours = chargerJoursSpeciaux();
+  const idx = jours.findIndex((j) => j.id === jour.id);
+  if (idx >= 0) jours[idx] = jour;
+  else jours.push(jour);
+  sauvegarderJoursSpeciaux(jours);
+}
+
+export function supprimerJourSpecial(id: string): void {
+  const jours = chargerJoursSpeciaux().filter((j) => j.id !== id);
+  sauvegarderJoursSpeciaux(jours);
+}
+
+/**
+ * Retourne tous les jours spéciaux pour une semaine donnée (lundi → dimanche).
+ * Inclut les fériés légaux calculés + les jours custom (Aïd, etc.)
+ */
+export function getJoursSpeciauxSemaine(
+  lundi: Date,
+  annee: number
+): { [dateStr: string]: JourSpecial[] } {
+  const feries = calculerFeriesLegaux(annee);
+  const custom = chargerJoursSpeciaux();
+  const tous = [...feries, ...custom];
+
+  const result: { [dateStr: string]: JourSpecial[] } = {};
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(lundi, i);
+    const str = dateToString(d);
+    const matches = tous.filter((j) => j.date === str);
+    if (matches.length > 0) result[str] = matches;
+  }
+  return result;
+}
+
+/**
+ * Vérifie si une date est le 1er mai (magasin fermé).
+ */
+export function estJourFerme(date: Date): boolean {
+  return date.getMonth() === 4 && date.getDate() === 1; // mois 4 = mai (0-indexé)
+}
+
+/**
+ * Retourne le type visuel d'un jour spécial pour l'affichage dans le Planning.
+ */
+export const COULEURS_JOUR_SPECIAL: Record<TypeJourSpecial, { bg: string; text: string; border: string; badge: string }> = {
+  FERIE_BLOQUE: { bg: "#FFCCCC", text: "#7B0000", border: "#DC3545", badge: "FERMÉ" },
+  FERIE_LEGAL:  { bg: "#FFF8E1", text: "#5D4037", border: "#FFC107", badge: "FÉRIÉ" },
+  AID_FITR:     { bg: "#E8F5E9", text: "#1B5E20", border: "#4CAF50", badge: "Aïd el-Fitr" },
+  AID_ADHA:     { bg: "#E3F2FD", text: "#0D47A1", border: "#2196F3", badge: "Aïd el-Adha" },
+};

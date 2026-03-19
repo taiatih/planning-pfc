@@ -16,6 +16,7 @@ import {
   genererHTMLPlanningPDF,
   getJoursCritiquesSeveres,
   getLundiDeSemaine, getNumeroSemaine, formatDate, OptionsCopie,
+  getJoursSpeciauxSemaine, JourSpecial, COULEURS_JOUR_SPECIAL, dateToString, estJourFerme,
 } from "@/lib/data";
 import PlanningCell from "@/components/PlanningCell";
 import { Info, Copy, BookmarkPlus, Wand2, FileText, Calendar, AlertOctagon, X, CopyPlus, ChevronRight } from "lucide-react";
@@ -100,6 +101,11 @@ export default function Planning() {
     const seuils = chargerSeuils();
     return getJoursCritiquesSeveres(planningActuel?.cellules || [], employes, seuils, 3);
   }, [planningActuel, employes]);
+
+  // Jours spéciaux de la semaine (fériés + Aïd)
+  const joursSpeciaux = useMemo(() => {
+    return getJoursSpeciauxSemaine(semaineCourante, semaineCourante.getFullYear());
+  }, [semaineCourante]);
 
   const [banniereVisible, setBanniereVisible] = useState(true);
 
@@ -289,31 +295,75 @@ export default function Planning() {
                 {JOURS_LONG.map((jour, i) => {
                   const niveau = niveauxCouverture[i];
                   const cn = COULEUR_NIVEAU[niveau.niveau];
+                  const dateJour = addDays(semaineCourante, i);
+                  const dateStr = dateToString(dateJour);
+                  const joursSpec = joursSpeciaux[dateStr] || [];
+                  const estFerme = estJourFerme(dateJour);
+                  const principalSpec = joursSpec[0]; // Premier jour spécial du jour
                   return (
-                    <th key={jour} style={{ minWidth: 110 }}>
+                    <th
+                      key={jour}
+                      style={{
+                        minWidth: 110,
+                        background: estFerme
+                          ? COULEURS_JOUR_SPECIAL.FERIE_BLOQUE.bg
+                          : principalSpec
+                            ? COULEURS_JOUR_SPECIAL[principalSpec.type].bg
+                            : undefined,
+                        color: estFerme
+                          ? COULEURS_JOUR_SPECIAL.FERIE_BLOQUE.text
+                          : principalSpec
+                            ? COULEURS_JOUR_SPECIAL[principalSpec.type].text
+                            : undefined,
+                      }}
+                    >
                       <div>{JOURS_COURT[i]}</div>
-                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, fontWeight: 400, opacity: 0.75 }}>
-                        {formatDateCourt(addDays(semaineCourante, i))}
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, fontWeight: 400, opacity: 0.85 }}>
+                        {formatDateCourt(dateJour)}
                       </div>
-                      {/* Indicateur couverture */}
-                      <div
-                        className="mt-1 rounded px-1.5 py-0.5 inline-flex items-center gap-1"
-                        style={{ backgroundColor: cn.bg, color: cn.text }}
-                        title={
-                          niveau.niveau === "vide"
-                            ? "Aucun seuil défini"
-                            : `${niveau.sousEffectifs} tranche(s) en sous-effectif sur ${niveau.totalTranches}`
-                        }
-                      >
+                      {/* Badge jour spécial */}
+                      {joursSpec.length > 0 && (
                         <div
-                          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: cn.dot }}
-                        />
-                        <span style={{ fontSize: 9, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700 }}>
-                          {cn.label}
-                          {niveau.niveau !== "vide" && niveau.sousEffectifs > 0 && ` (${niveau.sousEffectifs})`}
-                        </span>
-                      </div>
+                          className="mt-0.5 rounded px-1 py-0.5 inline-block"
+                          style={{
+                            background: COULEURS_JOUR_SPECIAL[joursSpec[0].type].border,
+                            color: "white",
+                            fontSize: 8,
+                            fontFamily: "'IBM Plex Mono', monospace",
+                            fontWeight: 700,
+                            letterSpacing: "0.03em",
+                            maxWidth: 100,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={joursSpec.map((j) => j.label).join(" · ")}
+                        >
+                          {COULEURS_JOUR_SPECIAL[joursSpec[0].type].badge}
+                          {joursSpec.length > 1 && ` +${joursSpec.length - 1}`}
+                        </div>
+                      )}
+                      {/* Indicateur couverture (masqué si fermé) */}
+                      {!estFerme && (
+                        <div
+                          className="mt-1 rounded px-1.5 py-0.5 inline-flex items-center gap-1"
+                          style={{ backgroundColor: cn.bg, color: cn.text }}
+                          title={
+                            niveau.niveau === "vide"
+                              ? "Aucun seuil défini"
+                              : `${niveau.sousEffectifs} tranche(s) en sous-effectif sur ${niveau.totalTranches}`
+                          }
+                        >
+                          <div
+                            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: cn.dot }}
+                          />
+                          <span style={{ fontSize: 9, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700 }}>
+                            {cn.label}
+                            {niveau.niveau !== "vide" && niveau.sousEffectifs > 0 && ` (${niveau.sousEffectifs})`}
+                          </span>
+                        </div>
+                      )}
                     </th>
                   );
                 })}
@@ -377,8 +427,50 @@ export default function Planning() {
                       const cellule = planningActuel?.cellules.find(
                         (cel) => cel.employeId === emp.id && cel.jour === jourIdx
                       );
+                      const dateJourCell = addDays(semaineCourante, jourIdx);
+                      const estFermeCell = estJourFerme(dateJourCell);
+                      const joursSpecCell = joursSpeciaux[dateToString(dateJourCell)] || [];
+                      const hasAid = joursSpecCell.some((j) => j.type === "AID_FITR" || j.type === "AID_ADHA");
+
+                      if (estFermeCell) {
+                        // 1er mai : cellule bloquée, saisie impossible
+                        return (
+                          <td key={jourIdx} style={{ padding: 0 }}>
+                            <div
+                              className="flex flex-col items-center justify-center"
+                              style={{
+                                minHeight: 52,
+                                background: COULEURS_JOUR_SPECIAL.FERIE_BLOQUE.bg,
+                                borderLeft: `3px solid ${COULEURS_JOUR_SPECIAL.FERIE_BLOQUE.border}`,
+                                cursor: "not-allowed",
+                                padding: "4px 6px",
+                              }}
+                              title="Magasin fermé — 1er mai"
+                            >
+                              <span style={{ fontSize: 9, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, color: COULEURS_JOUR_SPECIAL.FERIE_BLOQUE.text }}>FERMÉ</span>
+                              <span style={{ fontSize: 8, color: COULEURS_JOUR_SPECIAL.FERIE_BLOQUE.text, opacity: 0.7 }}>1er mai</span>
+                            </div>
+                          </td>
+                        );
+                      }
+
                       return (
-                        <td key={jourIdx} style={{ padding: 0 }}>
+                        <td key={jourIdx} style={{ padding: 0, position: "relative" }}>
+                          {/* Indicateur Aïd (bande colorée en haut de la cellule) */}
+                          {hasAid && (
+                            <div
+                              style={{
+                                position: "absolute",
+                                top: 0, left: 0, right: 0,
+                                height: 3,
+                                background: joursSpecCell.find((j) => j.type === "AID_FITR")
+                                  ? COULEURS_JOUR_SPECIAL.AID_FITR.border
+                                  : COULEURS_JOUR_SPECIAL.AID_ADHA.border,
+                                zIndex: 1,
+                              }}
+                              title={joursSpecCell.filter((j) => j.type === "AID_FITR" || j.type === "AID_ADHA").map((j) => j.label).join(" · ")}
+                            />
+                          )}
                           <PlanningCell
                             employeId={emp.id}
                             jour={jourIdx}
