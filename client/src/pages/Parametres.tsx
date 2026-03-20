@@ -8,10 +8,13 @@ import {
   chargerBriques, sauvegarderBriques, reinitialiserBriques,
   BRIQUES_DEFAUT, COULEURS_POSTE, COULEURS_ABSENCE,
   Poste, BriqueHoraire,
+  JourSpecial, TypeJourSpecial,
+  chargerJoursSpeciaux, sauvegarderJoursSpeciaux,
+  calculerFeriesLegaux, COULEURS_JOUR_SPECIAL,
 } from "@/lib/data";
 import {
   Settings, Database, Palette, Clock, AlertTriangle,
-  Plus, Trash2, Save, RotateCcw, Edit3, X, Check,
+  Plus, Trash2, Save, RotateCcw, Edit3, X, Check, CalendarDays,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -84,14 +87,50 @@ function editToBrique(e: BriqueEditState): BriqueHoraire {
   };
 }
 
+const MOIS_NOMS = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+
 export default function Parametres() {
   const { employes } = usePlanning();
-  const [activeTab, setActiveTab] = useState<"briques" | "postes" | "export" | "reset">("briques");
+  const [activeTab, setActiveTab] = useState<"briques" | "postes" | "calendrier" | "export" | "reset">("briques");
   const [briques, setBriques] = useState<BriqueHoraire[]>(() => chargerBriques());
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [editState, setEditState] = useState<BriqueEditState | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [filterType, setFilterType] = useState<"all" | "TRAVAIL" | "ABSENCE">("all");
+
+  // État onglet Calendrier
+  const anneeActuelle = new Date().getFullYear();
+  const [anneeCalendrier, setAnneeCalendrier] = useState(anneeActuelle);
+  const [joursCustom, setJoursCustom] = useState<JourSpecial[]>(() => chargerJoursSpeciaux());
+  const [newAidType, setNewAidType] = useState<"AID_FITR" | "AID_ADHA">("AID_FITR");
+  const [newAidDate, setNewAidDate] = useState("");
+  const [newAidLabel, setNewAidLabel] = useState("");
+
+  const feriesLegaux = calculerFeriesLegaux(anneeCalendrier);
+  const joursCustomAnnee = joursCustom.filter((j) => j.annee === anneeCalendrier);
+
+  const handleAjouterAid = useCallback(() => {
+    if (!newAidDate) { toast.error("Sélectionnez une date"); return; }
+    const annee = parseInt(newAidDate.slice(0, 4));
+    const label = newAidLabel.trim() || (newAidType === "AID_FITR" ? "Aïd el-Fitr" : "Aïd el-Adha");
+    const id = `aid-${newAidType.toLowerCase()}-${newAidDate}`;
+    const nouveau: JourSpecial = { id, date: newAidDate, type: newAidType, label, annee };
+    const updated = joursCustom.filter((j) => j.id !== id);
+    updated.push(nouveau);
+    updated.sort((a, b) => a.date.localeCompare(b.date));
+    sauvegarderJoursSpeciaux(updated);
+    setJoursCustom(updated);
+    setNewAidDate("");
+    setNewAidLabel("");
+    toast.success(`${label} ajouté au calendrier`);
+  }, [joursCustom, newAidType, newAidDate, newAidLabel]);
+
+  const handleSupprimerAid = useCallback((id: string) => {
+    const updated = joursCustom.filter((j) => j.id !== id);
+    sauvegarderJoursSpeciaux(updated);
+    setJoursCustom(updated);
+    toast.success("Fête supprimée");
+  }, [joursCustom]);
 
   const briquesFiltrees = briques.filter((b) =>
     filterType === "all" ? true : b.type === filterType
@@ -210,6 +249,7 @@ export default function Parametres() {
   const tabs = [
     { id: "briques" as const, label: "Créneaux", icon: Clock },
     { id: "postes" as const, label: "Postes", icon: Palette },
+    { id: "calendrier" as const, label: "Calendrier", icon: CalendarDays },
     { id: "export" as const, label: "Export", icon: Database },
     { id: "reset" as const, label: "Réinitialisation", icon: AlertTriangle },
   ];
@@ -606,6 +646,172 @@ export default function Parametres() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ TAB CALENDRIER ═══ */}
+      {activeTab === "calendrier" && (
+        <div className="space-y-6">
+          {/* Navigation année */}
+          <div className="flex items-center justify-between">
+            <h2
+              className="text-sm font-bold uppercase tracking-wider"
+              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", color: "var(--navy)" }}
+            >
+              Calendrier {anneeCalendrier}
+            </h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setAnneeCalendrier((a) => a - 1)}
+                className="px-3 py-1.5 text-xs font-semibold rounded border hover:bg-muted transition-colors"
+                style={{ borderColor: "var(--border)", color: "var(--muted-foreground)" }}
+              >
+                ← {anneeCalendrier - 1}
+              </button>
+              <span className="text-sm font-bold" style={{ color: "var(--navy)", fontFamily: "'IBM Plex Mono', monospace" }}>{anneeCalendrier}</span>
+              <button
+                onClick={() => setAnneeCalendrier((a) => a + 1)}
+                className="px-3 py-1.5 text-xs font-semibold rounded border hover:bg-muted transition-colors"
+                style={{ borderColor: "var(--border)", color: "var(--muted-foreground)" }}
+              >
+                {anneeCalendrier + 1} →
+              </button>
+            </div>
+          </div>
+
+          {/* Formulaire ajout fête musulmane */}
+          <div className="bg-white border rounded p-5 space-y-4" style={{ borderColor: "var(--border)" }}>
+            <h3 className="font-semibold text-sm" style={{ color: "var(--navy)" }}>
+              Déclarer une fête musulmane
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Les dates de l'Aïd varient chaque année selon le calendrier lunaire. Saisissez les dates manuellement pour les afficher à titre indicatif dans le planning.
+            </p>
+            <div className="flex flex-wrap gap-3 items-end">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold" style={{ color: "var(--muted-foreground)" }}>Type</label>
+                <select
+                  value={newAidType}
+                  onChange={(e) => setNewAidType(e.target.value as "AID_FITR" | "AID_ADHA")}
+                  className="px-3 py-1.5 text-xs border rounded"
+                  style={{ borderColor: "var(--border)", fontFamily: "'IBM Plex Mono', monospace" }}
+                >
+                  <option value="AID_FITR">Aïd el-Fitr (fin du Ramadan)</option>
+                  <option value="AID_ADHA">Aïd el-Adha (fête du sacrifice)</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold" style={{ color: "var(--muted-foreground)" }}>Date</label>
+                <input
+                  type="date"
+                  value={newAidDate}
+                  onChange={(e) => setNewAidDate(e.target.value)}
+                  className="px-3 py-1.5 text-xs border rounded"
+                  style={{ borderColor: "var(--border)", fontFamily: "'IBM Plex Mono', monospace" }}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold" style={{ color: "var(--muted-foreground)" }}>Label (optionnel)</label>
+                <input
+                  type="text"
+                  value={newAidLabel}
+                  onChange={(e) => setNewAidLabel(e.target.value)}
+                  placeholder="ex : Aïd el-Fitr 2026"
+                  className="px-3 py-1.5 text-xs border rounded"
+                  style={{ borderColor: "var(--border)", minWidth: 180 }}
+                />
+              </div>
+              <button
+                onClick={handleAjouterAid}
+                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white rounded"
+                style={{ background: "var(--navy)" }}
+              >
+                <Plus size={12} />
+                Ajouter
+              </button>
+            </div>
+
+            {/* Liste des fêtes déclarées pour l'année */}
+            {joursCustomAnnee.length > 0 && (
+              <div className="mt-3 space-y-2">
+                <div className="text-xs font-semibold" style={{ color: "var(--muted-foreground)" }}>Fêtes déclarées pour {anneeCalendrier}</div>
+                {joursCustomAnnee.map((j) => {
+                  const c = COULEURS_JOUR_SPECIAL[j.type];
+                  return (
+                    <div
+                      key={j.id}
+                      className="flex items-center justify-between px-3 py-2 rounded"
+                      style={{ background: c.bg, border: `1px solid ${c.border}` }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          className="px-2 py-0.5 rounded text-white text-xs font-bold"
+                          style={{ background: c.border, fontFamily: "'IBM Plex Mono', monospace" }}
+                        >
+                          {c.badge}
+                        </span>
+                        <span className="text-sm font-semibold" style={{ color: c.text }}>{j.label}</span>
+                        <span className="text-xs" style={{ color: c.text, opacity: 0.7, fontFamily: "'IBM Plex Mono', monospace" }}>
+                          {new Date(j.date + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleSupprimerAid(j.id)}
+                        className="p-1 rounded hover:bg-red-50 transition-colors"
+                        title="Supprimer"
+                      >
+                        <Trash2 size={13} style={{ color: "#DC3545" }} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Tableau des jours fériés légaux */}
+          <div className="bg-white border rounded overflow-hidden" style={{ borderColor: "var(--border)" }}>
+            <div className="px-5 py-3 border-b" style={{ borderColor: "var(--border)", background: "oklch(0.97 0.003 250)" }}>
+              <h3 className="font-semibold text-sm" style={{ color: "var(--navy)" }}>
+                Jours fériés légaux {anneeCalendrier} — calculés automatiquement
+              </h3>
+            </div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr style={{ background: "oklch(0.97 0.003 250)" }}>
+                  <th className="text-left px-4 py-2 font-semibold" style={{ color: "var(--muted-foreground)" }}>Date</th>
+                  <th className="text-left px-4 py-2 font-semibold" style={{ color: "var(--muted-foreground)" }}>Jour</th>
+                  <th className="text-left px-4 py-2 font-semibold" style={{ color: "var(--muted-foreground)" }}>Fête</th>
+                  <th className="text-left px-4 py-2 font-semibold" style={{ color: "var(--muted-foreground)" }}>Statut</th>
+                </tr>
+              </thead>
+              <tbody>
+                {feriesLegaux.map((f) => {
+                  const c = COULEURS_JOUR_SPECIAL[f.type];
+                  const dateObj = new Date(f.date + "T12:00:00");
+                  return (
+                    <tr key={f.id} style={{ background: c.bg, borderBottom: `1px solid ${c.border}22` }}>
+                      <td className="px-4 py-2 font-mono" style={{ color: c.text, fontFamily: "'IBM Plex Mono', monospace" }}>
+                        {dateObj.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}
+                      </td>
+                      <td className="px-4 py-2" style={{ color: c.text }}>
+                        {dateObj.toLocaleDateString("fr-FR", { weekday: "long" })}
+                      </td>
+                      <td className="px-4 py-2 font-semibold" style={{ color: c.text }}>{f.label}</td>
+                      <td className="px-4 py-2">
+                        <span
+                          className="px-2 py-0.5 rounded text-white text-xs font-bold"
+                          style={{ background: c.border, fontFamily: "'IBM Plex Mono', monospace" }}
+                        >
+                          {f.type === "FERIE_BLOQUE" ? "FERMÉ" : "FÉRIÉ"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

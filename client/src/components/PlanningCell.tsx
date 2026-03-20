@@ -1,5 +1,5 @@
 // PFC Planning Manager — Composant PlanningCell
-// Cellule cliquable avec sélecteur de créneau filtré intelligemment
+// Cellule cliquable avec sélecteur de créneau filtré intelligemment + notes
 // ============================================================
 
 import { useState, useRef, useEffect, useMemo } from "react";
@@ -10,7 +10,7 @@ import {
   Poste, Employe,
 } from "@/lib/data";
 import { cn } from "@/lib/utils";
-import { X, AlertTriangle } from "lucide-react";
+import { X, AlertTriangle, MessageSquare, Check, StickyNote } from "lucide-react";
 
 interface PlanningCellProps {
   employeId: string;
@@ -59,9 +59,17 @@ function getCellLabel(brique: string, poste?: Poste): { line1: string; line2: st
 }
 
 export default function PlanningCell({ employeId, jour, brique, poste, employe, readOnly }: PlanningCellProps) {
-  const { setCellule, celluleSelectionnee, setCelluleSelectionnee, planningActuel } = usePlanning();
+  const { setCellule, setCelluleNote, celluleSelectionnee, setCelluleSelectionnee, planningActuel } = usePlanning();
   const [open, setOpen] = useState(false);
+  const [noteMode, setNoteMode] = useState(false);
+  const [noteValue, setNoteValue] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const noteInputRef = useRef<HTMLInputElement>(null);
+
+  // Note actuelle de la cellule
+  const noteActuelle = planningActuel?.cellules.find(
+    (c) => c.employeId === employeId && c.jour === jour
+  )?.note || "";
 
   const isSelected = celluleSelectionnee?.employeId === employeId && celluleSelectionnee?.jour === jour;
   const style = getCellStyle(brique, poste);
@@ -90,6 +98,7 @@ export default function PlanningCell({ employeId, jour, brique, poste, employe, 
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
+        setNoteMode(false);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -100,27 +109,65 @@ export default function PlanningCell({ employeId, jour, brique, poste, employe, 
     if (readOnly) return;
     setCelluleSelectionnee({ employeId, jour });
     setOpen(true);
+    setNoteMode(false);
   };
 
   const handleSelect = (newBrique: string, newPoste?: Poste) => {
     setCellule(employeId, jour, newBrique, newPoste);
     setOpen(false);
+    setNoteMode(false);
     setCelluleSelectionnee(null);
+  };
+
+  const handleOpenNote = () => {
+    setNoteValue(noteActuelle);
+    setNoteMode(true);
+    setTimeout(() => noteInputRef.current?.focus(), 50);
+  };
+
+  const handleSaveNote = () => {
+    setCelluleNote(employeId, jour, noteValue);
+    setNoteMode(false);
+    setOpen(false);
+    setCelluleSelectionnee(null);
+  };
+
+  const handleNoteKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleSaveNote();
+    if (e.key === "Escape") { setNoteMode(false); setOpen(false); }
   };
 
   return (
     <div ref={ref} className="relative">
+      {/* Cellule principale */}
       <div
         className={cn("planning-cell", isSelected && "selected")}
-        style={style}
+        style={{ ...style, position: "relative" }}
         onClick={handleClick}
+        title={noteActuelle ? `📝 ${noteActuelle}` : undefined}
       >
         <span className="planning-cell-label">{line1}</span>
         {line2 && <span className="planning-cell-hours">{line2}</span>}
+        {/* Indicateur note */}
+        {noteActuelle && (
+          <div
+            style={{
+              position: "absolute",
+              top: 2,
+              right: 2,
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: "#0D6EFD",
+              flexShrink: 0,
+            }}
+            title={`Note : ${noteActuelle}`}
+          />
+        )}
       </div>
 
       {/* Sélecteur de brique */}
-      {open && (
+      {open && !noteMode && (
         <div
           className="absolute z-50 rounded shadow-lg border bg-white"
           style={{
@@ -152,9 +199,19 @@ export default function PlanningCell({ employeId, jour, brique, poste, employe, 
                 Reste {heuresRestantes.toFixed(1)}h / {employe.heuresHebdo}h
               </span>
             </div>
-            <button onClick={() => setOpen(false)} className="opacity-70 hover:opacity-100">
-              <X size={14} />
-            </button>
+            <div className="flex items-center gap-1">
+              {/* Bouton note */}
+              <button
+                onClick={(e) => { e.stopPropagation(); handleOpenNote(); }}
+                className="opacity-70 hover:opacity-100 p-1 rounded hover:bg-white/20 transition-colors"
+                title={noteActuelle ? `Modifier la note : "${noteActuelle}"` : "Ajouter une note"}
+              >
+                <StickyNote size={13} style={{ color: noteActuelle ? "#FFC107" : "white" }} />
+              </button>
+              <button onClick={() => { setOpen(false); setCelluleSelectionnee(null); }} className="opacity-70 hover:opacity-100 p-1">
+                <X size={14} />
+              </button>
+            </div>
           </div>
 
           {/* Briques travail */}
@@ -234,6 +291,87 @@ export default function PlanningCell({ employeId, jour, brique, poste, employe, 
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Note existante */}
+          {noteActuelle && (
+            <div
+              className="px-3 py-2 border-t flex items-start gap-2"
+              style={{ borderColor: "var(--border)", background: "#FFFDE7" }}
+            >
+              <StickyNote size={12} style={{ color: "#856404", flexShrink: 0, marginTop: 1 }} />
+              <span className="text-xs" style={{ color: "#5D4037" }}>{noteActuelle}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Mode saisie note */}
+      {open && noteMode && (
+        <div
+          className="absolute z-50 rounded shadow-lg border bg-white"
+          style={{
+            top: "100%",
+            left: 0,
+            minWidth: 260,
+            border: "1px solid var(--border)",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+          }}
+        >
+          <div
+            className="flex items-center justify-between px-3 py-2 border-b"
+            style={{ background: "#FFF8E1", borderColor: "#FFC107" }}
+          >
+            <div className="flex items-center gap-2">
+              <StickyNote size={13} style={{ color: "#856404" }} />
+              <span className="text-xs font-bold" style={{ color: "#5D4037", fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+                Note — {employe.nom} {["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"][jour]}
+              </span>
+            </div>
+            <button onClick={() => setNoteMode(false)} className="opacity-60 hover:opacity-100">
+              <X size={13} />
+            </button>
+          </div>
+          <div className="p-3 space-y-2">
+            <input
+              ref={noteInputRef}
+              type="text"
+              value={noteValue}
+              onChange={(e) => setNoteValue(e.target.value)}
+              onKeyDown={handleNoteKeyDown}
+              placeholder="ex : Formation HACCP, Livraison matin..."
+              maxLength={80}
+              className="w-full px-3 py-2 text-xs border rounded"
+              style={{
+                borderColor: "#FFC107",
+                fontFamily: "'IBM Plex Mono', monospace",
+                outline: "none",
+              }}
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: "var(--muted-foreground)", fontFamily: "'IBM Plex Mono', monospace" }}>
+                {noteValue.length}/80
+              </span>
+              <div className="flex gap-2">
+                {noteActuelle && (
+                  <button
+                    onClick={() => { setNoteValue(""); }}
+                    className="px-2 py-1 text-xs rounded border hover:bg-red-50 transition-colors"
+                    style={{ borderColor: "#DC3545", color: "#DC3545" }}
+                  >
+                    Effacer
+                  </button>
+                )}
+                <button
+                  onClick={handleSaveNote}
+                  className="flex items-center gap-1 px-3 py-1 text-xs font-semibold text-white rounded"
+                  style={{ background: "#856404" }}
+                >
+                  <Check size={11} />
+                  Valider
+                </button>
+              </div>
             </div>
           </div>
         </div>

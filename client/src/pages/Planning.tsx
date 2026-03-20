@@ -19,7 +19,7 @@ import {
   getJoursSpeciauxSemaine, JourSpecial, COULEURS_JOUR_SPECIAL, dateToString, estJourFerme,
 } from "@/lib/data";
 import PlanningCell from "@/components/PlanningCell";
-import { Info, Copy, BookmarkPlus, Wand2, FileText, Calendar, AlertOctagon, X, CopyPlus, ChevronRight } from "lucide-react";
+import { Info, Copy, BookmarkPlus, Wand2, FileText, Calendar, AlertOctagon, X, CopyPlus, ChevronRight, Cloud, CloudOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const POSTES_LEGENDE: { poste: Poste; label: string }[] = [
@@ -37,7 +37,7 @@ const COULEUR_NIVEAU: Record<NiveauCouverture, { bg: string; text: string; label
 };
 
 export default function Planning() {
-  const { employes, plannings, planningActuel, semaineCourante, stats, setCellule, setCellulesMultiples, copierVers, allerSemaine } = usePlanning();
+  const { employes, plannings, planningActuel, semaineCourante, stats, setCellule, setCellulesMultiples, copierVers, allerSemaine, isSaving, isDirty, lastSaved } = usePlanning();
   const actifs = employes.filter((e) => e.actif);
   const [loadingEmp, setLoadingEmp] = useState<string | null>(null);
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
@@ -277,9 +277,29 @@ export default function Planning() {
             <FileText size={12} />
             PDF
           </button>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Info size={12} />
-            <span className="hidden md:inline">Clic sur cellule pour modifier</span>
+          {/* Indicateur auto-save */}
+          <div className="flex items-center gap-1.5 text-xs" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+            {isSaving ? (
+              <>
+                <Loader2 size={11} className="animate-spin" style={{ color: "#0D6EFD" }} />
+                <span style={{ color: "#0D6EFD" }}>Sauvegarde...</span>
+              </>
+            ) : isDirty ? (
+              <>
+                <CloudOff size={11} style={{ color: "#FFC107" }} />
+                <span style={{ color: "#856404" }}>Non sauvegardé</span>
+              </>
+            ) : lastSaved ? (
+              <>
+                <Cloud size={11} style={{ color: "#28A745" }} />
+                <span style={{ color: "#155724" }}>Sauvegardé à {lastSaved.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
+              </>
+            ) : (
+              <>
+                <Info size={11} style={{ color: "var(--muted-foreground)" }} />
+                <span className="hidden md:inline" style={{ color: "var(--muted-foreground)" }}>Clic sur cellule pour modifier</span>
+              </>
+            )}
           </div>
         </div>
       </div>
