@@ -15,6 +15,7 @@ import {
   SlidersHorizontal,
   CalendarRange,
   CalendarCheck2,
+  GanttChartSquare,
 } from "lucide-react";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { getNumeroSemaine, formatDate, addDays, JOURS_COURT, formatDateCourt } from "@/lib/data";
@@ -23,6 +24,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { path: "/", icon: LayoutDashboard, label: "Dashboard" },
   { path: "/planning", icon: CalendarDays, label: "Planning" },
+  { path: "/gantt", icon: GanttChartSquare, label: "Gantt" },
   { path: "/couverture", icon: BarChart3, label: "Couverture" },
   { path: "/vue-semaines", icon: CalendarRange, label: "3 Semaines" },
   { path: "/rotation-mensuelle", icon: CalendarCheck2, label: "Rotation WE" },

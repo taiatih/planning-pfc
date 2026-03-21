@@ -1,22 +1,99 @@
 import { usePlanning } from "@/contexts/PlanningContext";
+import { useState, useEffect } from "react";
 import {
   JOURS_COURT, COULEURS_POSTE, Poste,
   calculerHeuresEmploye, validerContrat, compterJoursTravailles, compterJoursRepos,
-  getBrique, formatDate, addDays, getNumeroSemaine,
-  verifierRotationEquipe, StatutRotation,
+  getBrique, formatDate, addDays, getNumeroSemaine, getLundiDeSemaine, heureToNum,
+  verifierRotationEquipe, StatutRotation, BriqueHoraire,
 } from "@/lib/data";
-import { AlertTriangle, CheckCircle, Users, Clock, TrendingUp, CalendarCheck, Calendar } from "lucide-react";
+import { AlertTriangle, CheckCircle, Users, Clock, TrendingUp, CalendarCheck, Calendar, Activity } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 const POSTES: Poste[] = ["F&L", "SEC", "FRAIS", "CAISSE"];
 
+// Calculer le statut d'un employé à une heure donnée
+function getStatutEmploye(
+  employeId: string,
+  cellules: { employeId: string; jour: number; brique: string; poste?: Poste; note?: string }[],
+  heureActuelle: number, // en minutes depuis minuit
+  jourSemaine: number // 0=Lun
+): { statut: "present" | "arrive_bientot" | "finit_bientot" | "absent"; brique?: BriqueHoraire; poste?: Poste; debut?: number; fin?: number } {
+  const cellule = cellules.find((c) => c.employeId === employeId && c.jour === jourSemaine);
+  if (!cellule) return { statut: "absent" };
+  const b = getBrique(cellule.brique);
+  if (!b || b.type === "ABSENCE") return { statut: "absent" };
+
+  const debut1 = heureToNum(b.heureDebut) * 60;
+  const fin1 = heureToNum(b.heureFin) * 60;
+  const debut2 = b.heureDebut2 ? heureToNum(b.heureDebut2) * 60 : null;
+  const fin2 = b.heureFin2 ? heureToNum(b.heureFin2) * 60 : null;
+
+  const finale = fin2 ?? fin1;
+  const SEUIL = 60; // minutes
+
+  // En poste (période 1)
+  if (heureActuelle >= debut1 && heureActuelle < fin1) {
+    if (fin1 - heureActuelle <= SEUIL) return { statut: "finit_bientot", brique: b, poste: cellule.poste, debut: debut1, fin: finale };
+    return { statut: "present", brique: b, poste: cellule.poste, debut: debut1, fin: finale };
+  }
+  // En poste (période 2)
+  if (debut2 !== null && fin2 !== null && heureActuelle >= debut2 && heureActuelle < fin2) {
+    if (fin2 - heureActuelle <= SEUIL) return { statut: "finit_bientot", brique: b, poste: cellule.poste, debut: debut1, fin: finale };
+    return { statut: "present", brique: b, poste: cellule.poste, debut: debut1, fin: finale };
+  }
+  // Arrive bientôt
+  if (debut1 - heureActuelle > 0 && debut1 - heureActuelle <= SEUIL) {
+    return { statut: "arrive_bientot", brique: b, poste: cellule.poste, debut: debut1, fin: finale };
+  }
+  return { statut: "absent" };
+}
+
+function minutesToHeure(min: number): string {
+  const h = Math.floor(min / 60).toString().padStart(2, "0");
+  const m = (min % 60).toString().padStart(2, "0");
+  return `${h}h${m}`;
+}
+
 export default function Dashboard() {
   const { employes, planningActuel, stats, semaineCourante, plannings } = usePlanning();
+  const [heureActuelle, setHeureActuelle] = useState(() => {
+    const now = new Date();
+    return now.getHours() * 60 + now.getMinutes();
+  });
+  const [dateActuelle, setDateActuelle] = useState(() => new Date());
+
+  // Mise à jour toutes les minutes
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date();
+      setHeureActuelle(now.getHours() * 60 + now.getMinutes());
+      setDateActuelle(new Date());
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   const semaine = getNumeroSemaine(semaineCourante);
   const annee = semaineCourante.getFullYear();
 
   const actifs = employes.filter((e) => e.actif);
+
+  // Calculer le jour de semaine actuel (0=Lun) pour le widget
+  const lundiSemaineCourante = getLundiDeSemaine(semaineCourante);
+  const lundiAujourdhui = getLundiDeSemaine(dateActuelle);
+  const estSemaineCourante = lundiSemaineCourante.toDateString() === lundiAujourdhui.toDateString();
+  const jourSemaineActuel = estSemaineCourante ? ((dateActuelle.getDay() + 6) % 7) : -1; // -1 si pas la semaine courante
+
+  // Statuts des employés maintenant
+  const statutsEmployes = actifs.map((emp) => ({
+    employe: emp,
+    statut: planningActuel && jourSemaineActuel >= 0
+      ? getStatutEmploye(emp.id, planningActuel.cellules, heureActuelle, jourSemaineActuel)
+      : { statut: "absent" as const },
+  }));
+
+  const presents = statutsEmployes.filter((s) => s.statut.statut === "present" || s.statut.statut === "finit_bientot");
+  const arriventBientot = statutsEmployes.filter((s) => s.statut.statut === "arrive_bientot");
+  const finissentBientot = statutsEmployes.filter((s) => s.statut.statut === "finit_bientot");
 
   // Rotation weekends
   const rotationWeekends = verifierRotationEquipe(employes, plannings);
@@ -83,6 +160,144 @@ export default function Dashboard() {
             {stats.nombreAlertes === 0 ? "Tout est OK ✓" : "à corriger"}
           </div>
         </div>
+      </div>
+
+      {/* ── Widget Qui est là maintenant ── */}
+      <div className="bg-white border rounded overflow-hidden" style={{ borderColor: "var(--border)" }}>
+        <div
+          className="px-4 py-3 border-b flex items-center justify-between"
+          style={{ borderColor: "var(--border)", background: "var(--navy)" }}
+        >
+          <div className="flex items-center gap-2">
+            <Activity size={14} style={{ color: "#4ADE80" }} />
+            <h2
+              className="text-sm font-bold uppercase tracking-wider"
+              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", color: "white" }}
+            >
+              Qui est là maintenant
+            </h2>
+          </div>
+          <div className="flex items-center gap-2">
+            {jourSemaineActuel >= 0 ? (
+              <span
+                className="text-xs px-2 py-0.5 rounded"
+                style={{ background: "rgba(255,255,255,0.15)", color: "white", fontFamily: "'IBM Plex Mono', monospace" }}
+              >
+                {minutesToHeure(heureActuelle)} — {["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"][jourSemaineActuel]}
+              </span>
+            ) : (
+              <span
+                className="text-xs px-2 py-0.5 rounded"
+                style={{ background: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)", fontFamily: "'IBM Plex Mono', monospace" }}
+              >
+                Semaine non courante
+              </span>
+            )}
+          </div>
+        </div>
+
+        {jourSemaineActuel < 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+            Ce widget est actif uniquement pour la semaine en cours. Naviguez vers la semaine actuelle pour voir les présences en temps réel.
+          </div>
+        ) : (
+          <div className="p-4">
+            {/* Présents */}
+            <div className="mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 rounded-full" style={{ background: "#28A745" }} />
+                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: "#155724", fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+                  En poste ({presents.length})
+                </span>
+              </div>
+              {presents.length === 0 ? (
+                <div className="text-xs text-muted-foreground px-3">Aucun employé en poste actuellement</div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {presents.map(({ employe: emp, statut: s }) => {
+                    const c = s.poste ? COULEURS_POSTE[s.poste] : { bg: "#E8F5E9", text: "#155724", border: "#28A745" };
+                    const finBientot = s.statut === "finit_bientot";
+                    return (
+                      <div
+                        key={emp.id}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded"
+                        style={{
+                          backgroundColor: finBientot ? "#FFF3CD" : c.bg,
+                          border: `1px solid ${finBientot ? "#FFC107" : c.border}`,
+                          color: finBientot ? "#856404" : c.text,
+                        }}
+                      >
+                        <div
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ background: finBientot ? "#FFC107" : c.border, flexShrink: 0 }}
+                        />
+                        <span className="text-xs font-semibold" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+                          {emp.nom}
+                        </span>
+                        {s.poste && (
+                          <span className="text-xs opacity-70">{s.poste}</span>
+                        )}
+                        {s.fin !== undefined && (
+                          <span className="text-xs opacity-60">→ {minutesToHeure(s.fin)}</span>
+                        )}
+                        {finBientot && (
+                          <span className="text-xs font-bold">⚡ bientôt</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Arrivent bientôt */}
+            {arriventBientot.length > 0 && (
+              <div className="mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-2 h-2 rounded-full" style={{ background: "#2980B9" }} />
+                  <span className="text-xs font-bold uppercase tracking-wider" style={{ color: "#1A5276", fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+                    Arrivent dans &lt;1h ({arriventBientot.length})
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {arriventBientot.map(({ employe: emp, statut: s }) => (
+                    <div
+                      key={emp.id}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded"
+                      style={{ backgroundColor: "#E8F4FD", border: "1px solid #85C1E9", color: "#1A5276" }}
+                    >
+                      <span className="text-xs font-semibold" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+                        {emp.nom}
+                      </span>
+                      {s.debut !== undefined && (
+                        <span className="text-xs opacity-70">à {minutesToHeure(s.debut)}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Résumé par poste */}
+            <div className="border-t pt-3 mt-2 flex items-center gap-4 flex-wrap" style={{ borderColor: "var(--border)" }}>
+              {POSTES.map((p) => {
+                const count = presents.filter((s) => s.statut.poste === p).length;
+                const c = COULEURS_POSTE[p];
+                return (
+                  <div key={p} className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-sm" style={{ background: c.border }} />
+                    <span className="text-xs font-semibold" style={{ fontFamily: "'IBM Plex Mono', monospace", color: c.text }}>
+                      {p}: {count}
+                    </span>
+                  </div>
+                );
+              })}
+              <div className="ml-auto text-xs" style={{ color: "var(--muted-foreground)", fontFamily: "'IBM Plex Mono', monospace" }}>
+                Mis à jour chaque minute
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

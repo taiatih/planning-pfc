@@ -13,7 +13,8 @@ import Parametres from "./pages/Parametres";
 import Couverture from "./pages/Couverture";
 import Seuils from "./pages/Seuils";
 import VueSemaines from "./pages/VueSemaines";
-import RotationMensuelle from "./pages/RotationMensuelle";
+import RotationMensuelle from "@/pages/RotationMensuelle";
+import Gantt from "@/pages/Gantt";
 import NotFound from "./pages/NotFound";
 
 function Router() {
@@ -29,6 +30,7 @@ function Router() {
         <Route path="/seuils" component={Seuils} />
         <Route path="/vue-semaines" component={VueSemaines} />
         <Route path="/rotation-mensuelle" component={RotationMensuelle} />
+        <Route path="/gantt" component={Gantt} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

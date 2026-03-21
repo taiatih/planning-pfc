@@ -75,6 +75,12 @@ export default function PlanningCell({ employeId, jour, brique, poste, employe, 
   const style = getCellStyle(brique, poste);
   const { line1, line2 } = getCellLabel(brique, poste);
 
+  // Vérifier si ce jour est marqué indisponible pour cet employé
+  const jourIndisponible = employe.joursIndisponibles?.includes(jour) ?? false;
+  const b = getBrique(brique);
+  const estTravail = b && b.type === "TRAVAIL";
+  const alerteIndisponible = jourIndisponible && estTravail; // Alerte seulement si créneau de travail sur jour indisponible
+
   // Calculer les heures déjà planifiées (sans le jour courant)
   const heuresDejaPlannifiees = useMemo(() => {
     if (!planningActuel) return 0;
@@ -142,12 +148,38 @@ export default function PlanningCell({ employeId, jour, brique, poste, employe, 
       {/* Cellule principale */}
       <div
         className={cn("planning-cell", isSelected && "selected")}
-        style={{ ...style, position: "relative" }}
+        style={{
+          ...style,
+          position: "relative",
+          // Fond rayé si jour indisponible avec créneau de travail
+          ...(alerteIndisponible ? {
+            backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(220,53,69,0.15) 4px, rgba(220,53,69,0.15) 8px)`,
+            borderLeft: "3px solid #DC3545",
+            outline: "1px solid #DC3545",
+          } : {}),
+        }}
         onClick={handleClick}
-        title={noteActuelle ? `📝 ${noteActuelle}` : undefined}
+        title={alerteIndisponible ? `⚠️ Jour indisponible pour ${employe.nom}${noteActuelle ? ` | 📝 ${noteActuelle}` : ""}` : noteActuelle ? `📝 ${noteActuelle}` : undefined}
       >
         <span className="planning-cell-label">{line1}</span>
         {line2 && <span className="planning-cell-hours">{line2}</span>}
+        {/* Indicateur alerte indisponible */}
+        {alerteIndisponible && (
+          <div
+            style={{
+              position: "absolute",
+              top: 1,
+              left: 1,
+              fontSize: 8,
+              lineHeight: 1,
+              color: "#DC3545",
+              fontWeight: "bold",
+            }}
+            title="Jour indisponible"
+          >
+            ⚠
+          </div>
+        )}
         {/* Indicateur note */}
         {noteActuelle && (
           <div
