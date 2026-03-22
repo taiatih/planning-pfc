@@ -113,6 +113,7 @@ export default function PlanningCell({ employeId, jour, brique, poste, employe, 
 
   const handleClick = () => {
     if (readOnly) return;
+    if (employe.verrouille) return; // Employé verrouillé : saisie bloquée
     setCelluleSelectionnee({ employeId, jour });
     setOpen(true);
     setNoteMode(false);
@@ -178,6 +179,23 @@ export default function PlanningCell({ employeId, jour, brique, poste, employe, 
             title="Jour indisponible"
           >
             ⚠
+          </div>
+        )}
+        {/* Indicateur verrouillage */}
+        {employe.verrouille && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: 1,
+              right: 2,
+              fontSize: 8,
+              lineHeight: 1,
+              color: "#DC3545",
+              opacity: 0.7,
+            }}
+            title="Employé verrouillé — saisie bloquée"
+          >
+            🔒
           </div>
         )}
         {/* Indicateur note */}

@@ -37,6 +37,7 @@ interface PlanningContextType {
   ajouterEmploye: (emp: Employe) => void;
   modifierEmploye: (emp: Employe) => void;
   desactiverEmploye: (id: string) => void;
+  toggleVerrou: (id: string) => void;
 
   // UI
   employeSelectionne: string | null;
@@ -218,6 +219,14 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const toggleVerrou = useCallback((id: string) => {
+    setEmployes((prev) => {
+      const updated = prev.map((e) => (e.id === id ? { ...e, verrouille: !e.verrouille } : e));
+      sauvegarderEmployes(updated);
+      return updated;
+    });
+  }, []);
+
   return (
     <PlanningContext.Provider
       value={{
@@ -239,6 +248,7 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         ajouterEmploye,
         modifierEmploye,
         desactiverEmploye,
+        toggleVerrou,
         employeSelectionne,
         setEmployeSelectionne,
         celluleSelectionnee,

@@ -19,7 +19,7 @@ import {
   getJoursSpeciauxSemaine, JourSpecial, COULEURS_JOUR_SPECIAL, dateToString, estJourFerme,
 } from "@/lib/data";
 import PlanningCell from "@/components/PlanningCell";
-import { Info, Copy, BookmarkPlus, Wand2, FileText, Calendar, AlertOctagon, X, CopyPlus, ChevronRight, Cloud, CloudOff, Loader2 } from "lucide-react";
+import { Info, Copy, BookmarkPlus, Wand2, FileText, Calendar, AlertOctagon, X, CopyPlus, ChevronRight, Cloud, CloudOff, Loader2, Lock, LockOpen } from "lucide-react";
 import { toast } from "sonner";
 
 const POSTES_LEGENDE: { poste: Poste; label: string }[] = [
@@ -37,7 +37,7 @@ const COULEUR_NIVEAU: Record<NiveauCouverture, { bg: string; text: string; label
 };
 
 export default function Planning() {
-  const { employes, plannings, planningActuel, semaineCourante, stats, setCellule, setCellulesMultiples, copierVers, allerSemaine, isSaving, isDirty, lastSaved } = usePlanning();
+  const { employes, plannings, planningActuel, semaineCourante, stats, setCellule, setCellulesMultiples, copierVers, allerSemaine, isSaving, isDirty, lastSaved, toggleVerrou } = usePlanning();
   const actifs = employes.filter((e) => e.actif);
   const [loadingEmp, setLoadingEmp] = useState<string | null>(null);
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
@@ -403,13 +403,25 @@ export default function Planning() {
                 const hasSemaineType = semaineType && semaineType.jours.some((j) => j.brique !== "REPOS");
 
                 return (
-                  <tr key={emp.id} style={{ background: idx % 2 === 0 ? "white" : "oklch(0.985 0.001 250)" }}>
-                    {/* Nom + indicateur rotation weekend */}
+                  <tr key={emp.id} style={{ background: emp.verrouille ? "#FFF5F5" : (idx % 2 === 0 ? "white" : "oklch(0.985 0.001 250)") }}>
+                    {/* Nom + indicateur rotation weekend + cadenas */}
                     <td className="px-3 py-1">
                       <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: c.border }} />
+                        {/* Bouton verrou */}
+                        <button
+                          onClick={() => toggleVerrou(emp.id)}
+                          title={emp.verrouille ? "Verrouillé — cliquer pour déverrouiller" : "Déverrouillé — cliquer pour verrouiller"}
+                          className="flex-shrink-0 transition-opacity hover:opacity-100"
+                          style={{ opacity: emp.verrouille ? 1 : 0.25 }}
+                        >
+                          {emp.verrouille
+                            ? <Lock size={12} style={{ color: "#DC3545" }} />
+                            : <LockOpen size={12} style={{ color: "#6C757D" }} />
+                          }
+                        </button>
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: emp.verrouille ? "#DC3545" : c.border }} />
                         <div className="min-w-0">
-                          <div className="font-semibold text-xs" style={{ color: "var(--navy)" }}>{emp.nom}</div>
+                          <div className="font-semibold text-xs" style={{ color: emp.verrouille ? "#721C24" : "var(--navy)", textDecoration: emp.verrouille ? "none" : "none" }}>{emp.nom}</div>
                           {emp.contrainte && (
                             <div className="text-xs opacity-50" style={{ fontSize: 10 }}>{emp.contrainte}</div>
                           )}

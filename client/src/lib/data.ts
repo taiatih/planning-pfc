@@ -29,6 +29,8 @@ export interface Employe {
   commentaire?: string;
   // Jours indisponibles : 0=Lun, 1=Mar, 2=Mer, 3=Jeu, 4=Ven, 5=Sam, 6=Dim
   joursIndisponibles?: number[];
+  // Verrouillage : si true, l'employé est protégé de la suggestion auto et de la copie
+  verrouille?: boolean;
 }
 
 export interface BriqueHoraire {
@@ -809,7 +811,8 @@ export function suggererPlanning(
   semaine?: number,
   annee?: number
 ): CellulePlanning[] {
-  const actifs = employes.filter((e) => e.actif);
+  // Les employés verrouillés sont exclus de la suggestion auto
+  const actifs = employes.filter((e) => e.actif && !e.verrouille);
   const briques = chargerBriques().filter((b) => b.type === "TRAVAIL");
   const plannings = chargerPlannings();
   const cellules: CellulePlanning[] = [];
@@ -1340,6 +1343,11 @@ export function copierPlanningVers(
     // Vérifier que l'employé existe toujours dans la cible
     const employe = employes.find((e) => e.id === cellule.employeId && e.actif);
     if (!employe) {
+      nbIgnorees++;
+      return;
+    }
+    // Ignorer les employés verrouillés
+    if (employe.verrouille) {
       nbIgnorees++;
       return;
     }
