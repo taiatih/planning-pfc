@@ -108,6 +108,13 @@ export default function Planning() {
   }, [semaineCourante]);
 
   const [banniereVisible, setBanniereVisible] = useState(true);
+  const [filtrePoste, setFiltrePoste] = useState<Poste | "TOUS">("TOUS");
+
+  // Employés filtrés par poste
+  const actifsFiltres = useMemo(() => {
+    if (filtrePoste === "TOUS") return actifs;
+    return actifs.filter((e) => e.postePrincipal === filtrePoste || e.postesAutorises?.includes(filtrePoste));
+  }, [actifs, filtrePoste]);
 
   // Appliquer la semaine type d'un employé
   const appliquerSemaineType = useCallback((emp: Employe) => {
@@ -304,6 +311,65 @@ export default function Planning() {
         </div>
       </div>
 
+      {/* ── Barre de filtres par poste ── */}
+      <div
+        className="flex items-center gap-2 px-4 py-2 border-b bg-white flex-shrink-0"
+        style={{ borderColor: "var(--border)" }}
+      >
+        <span
+          className="text-xs font-bold uppercase tracking-wider flex-shrink-0"
+          style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", color: "var(--muted-foreground)" }}
+        >
+          Filtre
+        </span>
+        {(["TOUS", "F&L", "SEC", "FRAIS", "CAISSE"] as const).map((p) => {
+          const isActive = filtrePoste === p;
+          const c = p !== "TOUS" ? COULEURS_POSTE[p as Poste] : null;
+          const count = p === "TOUS"
+            ? actifs.length
+            : actifs.filter((e) => e.postePrincipal === p || e.postesAutorises?.includes(p as Poste)).length;
+          return (
+            <button
+              key={p}
+              onClick={() => setFiltrePoste(p)}
+              className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition-all"
+              style={{
+                background: isActive
+                  ? (c ? c.bg : "var(--navy)")
+                  : "transparent",
+                color: isActive
+                  ? (c ? c.text : "white")
+                  : "var(--muted-foreground)",
+                border: isActive
+                  ? `2px solid ${c ? c.border : "var(--navy)"}`
+                  : "2px solid transparent",
+                fontFamily: "'IBM Plex Mono', monospace",
+              }}
+            >
+              {p}
+              <span
+                className="rounded-full px-1.5 py-0.5"
+                style={{
+                  fontSize: 9,
+                  background: isActive ? "rgba(0,0,0,0.15)" : "var(--muted)",
+                  color: isActive ? "inherit" : "var(--muted-foreground)",
+                }}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+        {filtrePoste !== "TOUS" && (
+          <span
+            className="text-xs ml-2"
+            style={{ color: "var(--muted-foreground)", fontFamily: "'IBM Plex Mono', monospace" }}
+          >
+            {actifsFiltres.length} employé{actifsFiltres.length > 1 ? "és" : "é"} affiché{actifsFiltres.length > 1 ? "és" : "é"}
+          </span>
+        )}
+      </div>
+
       {/* ── Tableau principal ── */}
       <div className="flex-1 overflow-auto p-4">
         <div className="overflow-x-auto">
@@ -393,7 +459,7 @@ export default function Planning() {
               </tr>
             </thead>
             <tbody>
-              {actifs.map((emp, idx) => {
+              {actifsFiltres.map((emp, idx) => {
                 const heures = planningActuel
                   ? calculerHeuresEmploye(emp.id, planningActuel.cellules)
                   : 0;
