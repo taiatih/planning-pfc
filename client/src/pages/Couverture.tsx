@@ -13,6 +13,14 @@ import {
 import { AlertTriangle, CheckCircle, Users, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+const POSTES_FILTRES: { value: Poste | "TOUS"; label: string }[] = [
+  { value: "TOUS", label: "Tous les postes" },
+  { value: "F&L", label: "Fruits & Légumes" },
+  { value: "SEC", label: "Rayon Sec" },
+  { value: "FRAIS", label: "Rayon Frais" },
+  { value: "CAISSE", label: "Caisse" },
+];
+
 const POSTES: Poste[] = ["F&L", "SEC", "FRAIS", "CAISSE"];
 
 // Heures "critiques" à surveiller (midi)
@@ -22,6 +30,7 @@ export default function Couverture() {
   const { planningActuel, employes, semaineCourante } = usePlanning();
   const [jourSelectionne, setJourSelectionne] = useState(0);
   const [expandedTranche, setExpandedTranche] = useState<string | null>(null);
+  const [filtrePoste, setFiltrePoste] = useState<Poste | "TOUS">("TOUS");
   const seuils = useMemo(() => chargerSeuils(), []);
 
   const actifs = employes.filter((e) => e.actif);
@@ -108,34 +117,103 @@ export default function Couverture() {
         })}
       </div>
 
-      {/* ── Résumé alertes du jour ── */}
-      {alertesDuJour.length > 0 && (
-        <div
-          className="rounded border px-4 py-3 flex flex-wrap gap-2 items-center"
-          style={{ background: "#FFF3CD", borderColor: "#FFC107" }}
+      {/* ── Barre de filtres par poste ── */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span
+          className="text-xs font-bold uppercase tracking-wider flex-shrink-0"
+          style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", color: "var(--muted-foreground)" }}
         >
-          <AlertTriangle size={16} style={{ color: "#856404" }} />
-          <span className="text-xs font-bold" style={{ color: "#856404", fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
-            {alertesDuJour.length} sous-effectif{alertesDuJour.length > 1 ? "s" : ""} — {JOURS_LONG[jourSelectionne]} {formatDateCourt(dateJour)}
+          Secteur
+        </span>
+        {POSTES_FILTRES.map(({ value, label }) => {
+          const isActive = filtrePoste === value;
+          const c = value !== "TOUS" ? COULEURS_POSTE[value as Poste] : null;
+          // Compter les alertes du poste pour le jour sélectionné
+          const nbAlertes = value !== "TOUS"
+            ? tranches.reduce((acc, t) => {
+                const a = verifierSousEffectif(t, seuils).filter((al) => al.poste === value);
+                return acc + a.length;
+              }, 0)
+            : tranches.reduce((acc, t) => acc + verifierSousEffectif(t, seuils).length, 0);
+          return (
+            <button
+              key={value}
+              onClick={() => setFiltrePoste(value)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold transition-all"
+              style={{
+                background: isActive
+                  ? (c ? c.bg : "var(--navy)")
+                  : "white",
+                color: isActive
+                  ? (c ? c.text : "white")
+                  : "var(--muted-foreground)",
+                border: isActive
+                  ? `2px solid ${c ? c.border : "var(--navy)"}`
+                  : "2px solid var(--border)",
+                fontFamily: "'IBM Plex Mono', monospace",
+              }}
+            >
+              {value === "TOUS" ? "Tous" : value}
+              {nbAlertes > 0 && (
+                <span
+                  className="rounded-full px-1.5 py-0.5"
+                  style={{
+                    fontSize: 9,
+                    background: "#DC3545",
+                    color: "white",
+                  }}
+                >
+                  {nbAlertes}
+                </span>
+              )}
+            </button>
+          );
+        })}
+        {filtrePoste !== "TOUS" && (
+          <span
+            className="text-xs ml-1"
+            style={{ color: "var(--muted-foreground)", fontFamily: "'IBM Plex Mono', monospace" }}
+          >
+            — vue filtrée sur {filtrePoste}
           </span>
-          <div className="flex flex-wrap gap-1.5 mt-1 w-full">
-            {alertesDuJour.map((a, i) => (
-              <span
-                key={i}
-                className="px-2 py-0.5 rounded text-xs"
-                style={{
-                  background: COULEURS_POSTE[a.poste].bg,
-                  color: COULEURS_POSTE[a.poste].text,
-                  border: `1px solid ${COULEURS_POSTE[a.poste].border}`,
-                  fontFamily: "'IBM Plex Mono', monospace",
-                }}
-              >
-                {a.label} — {a.actuel}/{a.minimum} pers.
-              </span>
-            ))}
+        )}
+      </div>
+
+      {/* ── Résumé alertes du jour ── */}
+      {(() => {
+        const alertesFiltrees = filtrePoste === "TOUS"
+          ? alertesDuJour
+          : alertesDuJour.filter((a) => a.poste === filtrePoste);
+        return alertesFiltrees.length > 0 ? (
+          <div
+            className="rounded border px-4 py-3 flex flex-wrap gap-2 items-center"
+            style={{ background: "#FFF3CD", borderColor: "#FFC107" }}
+          >
+            <AlertTriangle size={16} style={{ color: "#856404" }} />
+            <span className="text-xs font-bold" style={{ color: "#856404", fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+              {alertesFiltrees.length} sous-effectif{alertesFiltrees.length > 1 ? "s" : ""}
+              {filtrePoste !== "TOUS" ? ` sur ${filtrePoste}` : ""}
+              {" "}— {JOURS_LONG[jourSelectionne]} {formatDateCourt(dateJour)}
+            </span>
+            <div className="flex flex-wrap gap-1.5 mt-1 w-full">
+              {alertesFiltrees.map((a, i) => (
+                <span
+                  key={i}
+                  className="px-2 py-0.5 rounded text-xs"
+                  style={{
+                    background: COULEURS_POSTE[a.poste].bg,
+                    color: COULEURS_POSTE[a.poste].text,
+                    border: `1px solid ${COULEURS_POSTE[a.poste].border}`,
+                    fontFamily: "'IBM Plex Mono', monospace",
+                  }}
+                >
+                  {a.label} — {a.actuel}/{a.minimum} pers.
+                </span>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        ) : null;
+      })()}
       {alertesDuJour.length === 0 && tranches.some((t) => t.total > 0) && (
         <div
           className="rounded border px-4 py-3 flex items-center gap-2"
@@ -189,15 +267,34 @@ export default function Couverture() {
                     >
                       Heure
                     </th>
-                    {POSTES.map((p) => (
-                      <th
-                        key={p}
-                        className="text-center px-2 py-2 font-semibold uppercase tracking-wide border-r"
-                        style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", color: COULEURS_POSTE[p].text, borderColor: "var(--border)", minWidth: 80 }}
-                      >
-                        {p}
-                      </th>
-                    ))}
+                    {POSTES.map((p) => {
+                      const isFiltered = filtrePoste !== "TOUS" && filtrePoste !== p;
+                      const isHighlighted = filtrePoste === p;
+                      const c = COULEURS_POSTE[p];
+                      return (
+                        <th
+                          key={p}
+                          className="text-center px-2 py-2 font-semibold uppercase tracking-wide border-r"
+                          style={{
+                            fontFamily: "'IBM Plex Sans Condensed', sans-serif",
+                            color: isFiltered ? "var(--muted-foreground)" : c.text,
+                            borderColor: "var(--border)",
+                            minWidth: 80,
+                            opacity: isFiltered ? 0.35 : 1,
+                            background: isHighlighted ? c.bg : undefined,
+                            transition: "all 0.2s",
+                          }}
+                        >
+                          {p}
+                          {isHighlighted && (
+                            <div
+                              className="mt-0.5 h-0.5 rounded-full"
+                              style={{ background: c.border }}
+                            />
+                          )}
+                        </th>
+                      );
+                    })}
                     <th
                       className="text-center px-2 py-2 font-semibold uppercase tracking-wide"
                       style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", color: "var(--navy)", minWidth: 60 }}
@@ -248,8 +345,9 @@ export default function Couverture() {
                             const count = tranche.parPoste[poste];
                             const alerte = alertes.find((a) => a.poste === poste);
                             const c = COULEURS_POSTE[poste];
+                            const isFiltered = filtrePoste !== "TOUS" && filtrePoste !== poste;
                             return (
-                              <td key={poste} className="px-2 py-1.5 text-center border-r" style={{ borderColor: "var(--border)" }}>
+                              <td key={poste} className="px-2 py-1.5 text-center border-r" style={{ borderColor: "var(--border)", opacity: isFiltered ? 0.25 : 1, transition: "opacity 0.2s" }}>
                                 {count > 0 ? (
                                   <div className="flex items-center justify-center gap-1">
                                     <span
