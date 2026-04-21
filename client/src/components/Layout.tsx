@@ -17,9 +17,59 @@ import {
   CalendarCheck2,
   GanttChartSquare,
 } from "lucide-react";
+import { useState, useEffect } from "react";
 import { usePlanning } from "@/contexts/PlanningContext";
-import { getNumeroSemaine, formatDate, addDays, JOURS_COURT, formatDateCourt } from "@/lib/data";
+import { getNumeroSemaine, formatDate, addDays, JOURS_COURT, formatDateCourt, getBrique, chargerEmployes } from "@/lib/data";
 import { cn } from "@/lib/utils";
+
+/** Calcule le nombre d'employés en poste à l'heure actuelle */
+function calculerPresentsActuels(): number {
+  const now = new Date();
+  const jourIdx = (now.getDay() + 6) % 7; // 0=Lun … 6=Dim
+  const hNow = now.getHours() * 60 + now.getMinutes();
+
+  // Récupérer le planning de la semaine courante depuis localStorage
+  const lundi = (() => {
+    const d = new Date(now);
+    const day = d.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  })();
+  const semaine = (() => {
+    const d = new Date(Date.UTC(lundi.getFullYear(), lundi.getMonth(), lundi.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  })();
+  const annee = lundi.getFullYear();
+
+  const raw = localStorage.getItem(`pfc_planning_${annee}_${semaine}`);
+  if (!raw) return 0;
+  try {
+    const planning = JSON.parse(raw);
+    const cellules: Array<{ employeId: string; jour: number; briqueCodes: string[] }> = planning.cellules || [];
+    const employes = chargerEmployes();
+    let count = 0;
+    for (const cellule of cellules) {
+      if (cellule.jour !== jourIdx) continue;
+      for (const code of cellule.briqueCodes) {
+        const brique = getBrique(code);
+        if (!brique || brique.type !== "TRAVAIL") continue;
+        const toMin = (h: string) => { const [hh, mm] = h.split(":").map(Number); return hh * 60 + mm; };
+        const debut1 = toMin(brique.heureDebut);
+        const fin1 = toMin(brique.heureFin);
+        const debut2 = brique.heureDebut2 ? toMin(brique.heureDebut2) : null;
+        const fin2 = brique.heureFin2 ? toMin(brique.heureFin2) : null;
+        const present = (hNow >= debut1 && hNow < fin1) || (debut2 !== null && fin2 !== null && hNow >= debut2 && hNow < fin2);
+        if (present) { count++; break; }
+      }
+    }
+    return count;
+  } catch { return 0; }
+}
 
 const NAV_ITEMS = [
   { path: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -41,6 +91,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     planningActuel, sauvegarder, publier, creerAvenant,
     stats, isSaving,
   } = usePlanning();
+
+  // Compteur en direct : employés en poste maintenant
+  const [presentsActuels, setPresentsActuels] = useState(() => calculerPresentsActuels());
+  useEffect(() => {
+    const timer = setInterval(() => setPresentsActuels(calculerPresentsActuels()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const semaine = getNumeroSemaine(semaineCourante);
   const annee = semaineCourante.getFullYear();
@@ -81,12 +138,46 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {NAV_ITEMS.map(({ path, icon: Icon, label }) => (
-            <Link key={path} href={path} className={cn("nav-item", location === path && "active")}>
-              <Icon size={16} />
-              <span>{label}</span>
-            </Link>
-          ))}
+          {NAV_ITEMS.map(({ path, icon: Icon, label }) => {
+            const isDashboard = path === "/";
+            return (
+              <Link key={path} href={path} className={cn("nav-item", location === path && "active")}>
+                <Icon size={16} />
+                <span className="flex-1">{label}</span>
+                {isDashboard && (
+                  <span
+                    className="flex items-center gap-1 text-xs font-bold px-1.5 py-0.5 rounded-full"
+                    style={{
+                      background: presentsActuels > 0
+                        ? "oklch(0.35 0.12 145)"
+                        : "oklch(0.28 0.03 250)",
+                      color: presentsActuels > 0
+                        ? "oklch(0.92 0.08 145)"
+                        : "oklch(0.55 0.03 250)",
+                      fontFamily: "'IBM Plex Mono', monospace",
+                      fontSize: 10,
+                      minWidth: 20,
+                      textAlign: "center",
+                      transition: "all 0.4s",
+                    }}
+                    title={`${presentsActuels} employé${presentsActuels > 1 ? "és" : "é"} en poste maintenant`}
+                  >
+                    {presentsActuels > 0 && (
+                      <span
+                        className="inline-block w-1.5 h-1.5 rounded-full"
+                        style={{
+                          background: "oklch(0.75 0.18 145)",
+                          boxShadow: "0 0 4px oklch(0.75 0.18 145)",
+                          animation: "pulse 2s infinite",
+                        }}
+                      />
+                    )}
+                    {presentsActuels}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </nav>
 
         {/* Alertes */}
