@@ -2,6 +2,7 @@
 // Tableau Sam/Dim par employé sur les 4 semaines du mois
 // Design: "Terrain Pro" — Brutalisme fonctionnel, IBM Plex
 // ============================================================
+import React from "react";
 
 import { useState, useMemo } from "react";
 import { usePlanning } from "@/contexts/PlanningContext";
@@ -279,22 +280,20 @@ export default function RotationMensuelle() {
 
                     {/* Cellules Sam/Dim par semaine */}
                     {sems.map((sem) => (
-                      <>
+                      <React.Fragment key={`${sem.semaine}-${sem.annee}`}>
                         <CelluleWeekend
-                          key={`${sem.semaine}-sam`}
                           travaille={sem.samediTravaille}
                           absence={sem.samediAbsence}
                           indisponible={joursIndisp.includes(5)}
                           planifie={plannings.some((p) => p.semaine === sem.semaine && p.annee === sem.annee)}
                         />
                         <CelluleWeekend
-                          key={`${sem.semaine}-dim`}
                           travaille={sem.dimancheTravaille}
                           absence={sem.dimancheAbsence}
                           indisponible={joursIndisp.includes(6)}
                           planifie={plannings.some((p) => p.semaine === sem.semaine && p.annee === sem.annee)}
                         />
-                      </>
+                      </React.Fragment>
                     ))}
 
                     {/* Total mois */}
