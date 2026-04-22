@@ -198,9 +198,8 @@ export default function RotationMensuelle() {
               <tr style={{ background: "oklch(0.25 0.04 250)" }}>
                 <td colSpan={2} />
                 {semaines.map(({ semaine }) => (
-                  <>
+                  <React.Fragment key={`subheader-${semaine}`}>
                     <td
-                      key={`${semaine}-sam`}
                       className="text-center py-1.5"
                       style={{
                         color: "rgba(255,255,255,0.8)", fontSize: 9,
@@ -222,7 +221,7 @@ export default function RotationMensuelle() {
                     >
                       DIM
                     </td>
-                  </>
+                  </React.Fragment>
                 ))}
                 <td
                   className="text-center py-1.5"
