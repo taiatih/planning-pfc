@@ -6,7 +6,7 @@ import {
   getBrique, formatDate, addDays, getNumeroSemaine, getLundiDeSemaine, heureToNum,
   verifierRotationEquipe, StatutRotation, BriqueHoraire,
 } from "@/lib/data";
-import { AlertTriangle, CheckCircle, Users, Clock, TrendingUp, CalendarCheck, Calendar, Activity } from "lucide-react";
+import { AlertTriangle, CheckCircle, Users, Clock, TrendingUp, CalendarCheck, Calendar, Activity, Printer, X } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 const POSTES: Poste[] = ["F&L", "SEC", "FRAIS", "CAISSE"];
@@ -56,6 +56,7 @@ function minutesToHeure(min: number): string {
 
 export default function Dashboard() {
   const { employes, planningActuel, stats, semaineCourante, plannings } = usePlanning();
+  const [showPrintModal, setShowPrintModal] = useState(false);
   const [heureActuelle, setHeureActuelle] = useState(() => {
     const now = new Date();
     return now.getHours() * 60 + now.getMinutes();
@@ -112,8 +113,130 @@ export default function Dashboard() {
     CAISSE: d.parPoste["CAISSE"],
   }));
 
+  // ── Fonction d'impression du rapport hebdomadaire ──
+  function imprimerRapport() {
+    const semaine = getNumeroSemaine(semaineCourante);
+    const annee = semaineCourante.getFullYear();
+    const dateDebut = formatDate(semaineCourante);
+    const dateFin = formatDate(addDays(semaineCourante, 6));
+    const JOURS = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
+
+    // Lignes employés
+    const lignesEmployes = actifs.map((emp) => {
+      const heures = planningActuel ? calculerHeuresEmploye(emp.id, planningActuel.cellules) : 0;
+      const validation = validerContrat(emp, heures);
+      const jours = Array.from({ length: 7 }, (_, j) => {
+        const c = planningActuel?.cellules.find((cel) => cel.employeId === emp.id && cel.jour === j);
+        if (!c) return `<td style="text-align:center;padding:3px 4px;border:1px solid #ddd;font-size:9px;color:#999;">—</td>`;
+        const b = getBrique(c.brique);
+        if (!b) return `<td style="text-align:center;padding:3px 4px;border:1px solid #ddd;font-size:9px;">?</td>`;
+        if (b.type === "ABSENCE") {
+          return `<td style="text-align:center;padding:3px 4px;border:1px solid #ddd;background:#FFE5CC;color:#7D3C00;font-size:9px;">${b.code}</td>`;
+        }
+        const couleur = c.poste ? COULEURS_POSTE[c.poste] : { bg: "#f0f0f0", text: "#333" };
+        return `<td style="text-align:center;padding:3px 4px;border:1px solid #ddd;background:${couleur.bg};color:${couleur.text};font-size:9px;"><strong>${c.poste || ""}</strong><br/>${b.duree}h<br/><span style="font-size:7px;">${b.heureDebut}-${b.heureFin}</span></td>`;
+      }).join("");
+      const statutColor = heures === 0 ? "#999" : validation.ok ? "#155724" : "#7D3C00";
+      const statutLabel = heures === 0 ? "À remplir" : validation.ok ? "✓ OK" : `⚠ ${heures}h/${emp.heuresHebdo}h`;
+      return `<tr>
+        <td style="padding:3px 6px;border:1px solid #ddd;font-weight:bold;font-size:10px;white-space:nowrap;">${emp.nom}</td>
+        <td style="text-align:center;padding:3px 4px;border:1px solid #ddd;font-size:9px;">${emp.heuresHebdo}h</td>
+        ${jours}
+        <td style="text-align:center;padding:3px 4px;border:1px solid #ddd;font-weight:bold;font-size:10px;">${heures > 0 ? heures + "h" : "—"}</td>
+        <td style="text-align:center;padding:3px 4px;border:1px solid #ddd;font-size:9px;color:${statutColor};">${statutLabel}</td>
+      </tr>`;
+    }).join("");
+
+    // Alertes rotation
+    const alertesHTML = alertesRotation.length > 0
+      ? alertesRotation.map((e) => {
+          const r = rotationWeekends[e.id];
+          return `<li>${e.nom} — Sam: ${r.samedis} | Dim: ${r.dimanches} (${r.statut === "manque_samedi" ? "Sam manquant" : r.statut === "manque_dimanche" ? "Dim manquant" : "Sam+Dim manquants"})</li>`;
+        }).join("")
+      : "<li style='color:#155724'>Aucune alerte de rotation</li>";
+
+    const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Rapport Semaine ${semaine} — ${annee}</title>
+  <style>
+    @page { size: A4 landscape; margin: 8mm; }
+    body { font-family: 'Helvetica', Arial, sans-serif; margin: 0; padding: 8px; font-size: 10px; }
+    h1 { font-size: 15px; color: #1B2A4A; margin: 0 0 2px; }
+    .subtitle { font-size: 10px; color: #666; margin-bottom: 8px; }
+    .kpis { display: flex; gap: 12px; margin-bottom: 10px; }
+    .kpi { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 6px 12px; text-align: center; flex: 1; }
+    .kpi-val { font-size: 18px; font-weight: bold; color: #1B2A4A; }
+    .kpi-lbl { font-size: 8px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+    th { padding: 5px 4px; border: 1px solid #ddd; background: #1B2A4A; color: white; font-size: 9px; text-align: center; }
+    td { padding: 3px 4px; border: 1px solid #ddd; }
+    h3 { font-size: 11px; color: #1B2A4A; margin: 8px 0 4px; border-bottom: 1px solid #dee2e6; padding-bottom: 2px; }
+    ul { margin: 0; padding-left: 16px; }
+    li { font-size: 9px; margin-bottom: 2px; }
+    .footer { margin-top: 8px; font-size: 8px; color: #aaa; text-align: center; border-top: 1px solid #eee; padding-top: 4px; }
+  </style>
+</head>
+<body>
+  <h1>PFC MARKETS — Rapport Semaine ${semaine} / ${annee}</h1>
+  <div class="subtitle">${dateDebut} → ${dateFin} · Statut : ${planningActuel?.statut || "Non créé"} · Généré le ${new Date().toLocaleDateString("fr-FR", { weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-val">${stats.totalEmployesActifs}</div><div class="kpi-lbl">Employés actifs</div></div>
+    <div class="kpi"><div class="kpi-val">${stats.totalHeuresPlanifiees.toFixed(1)}h</div><div class="kpi-lbl">Heures planifiées</div></div>
+    <div class="kpi"><div class="kpi-val" style="color:${stats.conformiteContrats >= 80 ? '#155724' : '#7D3C00'}">${stats.conformiteContrats}%</div><div class="kpi-lbl">Conformité contrats</div></div>
+    <div class="kpi"><div class="kpi-val" style="color:${stats.nombreAlertes > 0 ? '#7D3C00' : '#155724'}">${stats.nombreAlertes}</div><div class="kpi-lbl">Alertes</div></div>
+  </div>
+
+  <h3>Planning de la semaine</h3>
+  <table>
+    <thead><tr>
+      <th style="text-align:left;">Employé</th>
+      <th>Contrat</th>
+      ${JOURS.map((j, i) => `<th>${j}<br/><span style="font-size:7px;font-weight:normal;">${formatDate(addDays(semaineCourante, i)).slice(0, 5)}</span></th>`).join("")}
+      <th>Total</th>
+      <th>Statut</th>
+    </tr></thead>
+    <tbody>${lignesEmployes}</tbody>
+  </table>
+
+  <h3>Alertes rotation weekends</h3>
+  <ul>${alertesHTML}</ul>
+
+  <div class="footer">PFC Planning Manager — Rapport automatique — ${new Date().toLocaleDateString("fr-FR")}</div>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank");
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      setTimeout(() => win.print(), 500);
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
+      {/* ── Bouton Imprimer ── */}
+      <div className="flex justify-end">
+        <button
+          onClick={imprimerRapport}
+          className="flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium"
+          style={{
+            background: "var(--navy)",
+            color: "white",
+            border: "none",
+            cursor: "pointer",
+            fontFamily: "'IBM Plex Sans Condensed', sans-serif",
+          }}
+          title="Imprimer le rapport hebdomadaire"
+        >
+          <Printer size={14} />
+          Imprimer la semaine
+        </button>
+      </div>
+
       {/* ── KPIs ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="kpi-card">
